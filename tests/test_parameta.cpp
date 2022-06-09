@@ -20,8 +20,11 @@ using namespace LML_NAMESPACE_ID;
       s_val<float[4][4]> auto floref = pv<(flo)>; // refers to global var flo
 
   //  cptype<float> auto floref = pval<(flo)>{}; // FAIL: flo not constexpr
+#if not defined(__clang__)
       ps_val auto pi = pval<3.14159f>{};
+#endif
 
+static_assert(&floref()==&flo);
 // end code from readme
 
 // Pass val by-value, can't use arg as constexpr in function!
@@ -30,6 +33,7 @@ constexpr auto sz = [](val auto v) {
       auto s = size(decltype(v){}); // size(v) is not constexpr
       return s;
     }(dval{1});
+static_assert( sz == 1 );
 
 static_assert( xtra<0>(ty<int,1>) == 1 );
 
@@ -84,7 +88,11 @@ static_assert( ! val<arge> );
 static_assert(   val<argf> );
 
 template <argf> struct Argf : pval<true> {};
+#if not defined(__clang__)
 Argf<{1}> argf_cnttp;
+#else
+Argf<argf{1}> argf_cnttp;
+#endif
 
 static_assert( val<std::true_type> );
 static_assert( s_val<std::true_type> );
@@ -96,7 +104,8 @@ static_assert( val<std::integral_constant<int&, ref>> );
 static_assert( s_val<std::integral_constant<int&, ref>> );
 static_assert( ! ps_val<std::integral_constant<int&, ref>> );
 
-static_assert( ! val<decltype([]{return 1;})> );
+[[maybe_unused]] auto one = []{return 1;};
+static_assert( ! val<decltype(one)> );
 
 // s_val
 
@@ -149,8 +158,7 @@ static_assert( ! is_auto_NTTP_functor([]{static constexpr int i = 1;
 
 auto param_by_value = pval<int_const>{};
 static_assert( is_auto_NTTP_functor( param_by_value ) ); // by value
-//static_assert( ps_val<decltype(param_by_value)> ); // by value (FAIL on gcc)
-static_assert( ps_val<pval<int_const>> ); // by value
+static_assert( ps_val<decltype(param_by_value)> ); // by value
 
 //auto param_by_ref = pval<std::as_const(int_const)>{};
 auto param_by_ref = pval<static_cast<int const&>(int_const)>{};
@@ -180,6 +188,7 @@ ps_val<bool> auto True = std::true_type{};
 ps_val<bool> auto False = std::false_type{};
 static_assert( True && ! False );
 constexpr auto tk = []<ps_val<bool>>(){return true;}.template operator()<std::true_type>();
+static_assert(tk);
 
 // xtras
 
@@ -208,10 +217,10 @@ static_assert( get<1>(dval<int,1,2,3>{}) == 1 );
 static_assert( get<2>(dval<int,1,2,3>{}) == 2 );
 static_assert( get<3>(dval<int,1,2,3>{}) == 3 );
 
-#ifndef _MSC_VER
+#ifdef _MSC_VER
 #define NUA [[msvc::no_unique_address]]
 #else
-#define NUA [[msvc::no_unique_address]]
+#define NUA [[no_unique_address]]
 #endif
 
 template <typename elem, val extentt>
@@ -252,10 +261,15 @@ struct span
   auto begin() {return data;}
   auto end() {return data+extent;}
 };
+#if defined(__clang__)
+template <typ T, val v>
+span(T,v, type_t<T>*) -> span<T,v>;
+#endif
 
 #include <cassert>
 #include <cstddef>
 #include <cstdio>
+#include <memory>
 
 int main()
 {

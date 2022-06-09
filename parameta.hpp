@@ -218,7 +218,8 @@ template <typename T,
 concept val =
      std::same_as<V, std::remove_cvref_t<typename T::value_type>>
   && requires (typename T::value_type(T::*p)()const) { p = &T::operator(); }
-  && std::same_as<typename T::value_type, std::remove_cv_t<decltype(T::value)>>
+  && (std::same_as<typename T::value_type, std::remove_cv_t<decltype(T::value)>>
+   || std::same_as<typename T::value_type, decltype(T::value)>)
   && std::is_convertible_v<T, typename T::value_type>;
 
 // s_val <T, V = see-above*>
