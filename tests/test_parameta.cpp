@@ -1,6 +1,6 @@
 #include <utility> // as_const
 
-#include "test_parameta.hpp"
+#include "parameta.hpp"
 
 using namespace LML_NAMESPACE_ID;
 
@@ -71,16 +71,16 @@ static_assert( std::same_as< int, metatype<int>::type > );
 
 // val
 
-struct arg7 { using value_type = int; int value; int operator()();                 };
+struct arg7 { using value_type = int; int value; int operator()()const;                 };
 struct argb { using value_type = int; int value;                   operator int(); };
-struct argd { using value_type = int;            int operator()(); operator int(); };
-struct arge {                         int value; int operator()(); operator int(); };
+struct argd { using value_type = int;            int operator()()const; operator int(); };
+struct arge {                         int value; int operator()()const; operator int(); };
 struct argf { using value_type = int; int value; int operator()()const; operator int(); };
 
 static_assert( ! val<arg7> );
 static_assert( ! val<argb> );
 static_assert( ! val<argd> );
-//static_assert( ! val<arge> );
+static_assert( ! val<arge> );
 static_assert(   val<argf> );
 
 template <argf> struct Argf : pval<true> {};
@@ -118,7 +118,7 @@ static_assert(   s_val<pg> );
 static_assert( ! ps_val<pg> );
 
 struct cd { using value_type = int; static const int value{};           int operator()(){return value;}; operator int(); };
-struct ce { using value_type = int; static       int value;   constexpr int operator()(){return value;}; operator int(); };
+struct ce { using value_type = int; static       int value;             int operator()(){return value;}; operator int(); };
 struct cf { using value_type = int; static const int value{}; constexpr int operator()()const{return value;}; operator int(); };
 
 static_assert( ! ps_val<cd> );
@@ -149,14 +149,16 @@ static_assert( ! is_auto_NTTP_functor([]{static constexpr int i = 1;
 
 auto param_by_value = pval<int_const>{};
 static_assert( is_auto_NTTP_functor( param_by_value ) ); // by value
-static_assert( ps_val<decltype(param_by_value)> ); // by value
+//static_assert( ps_val<decltype(param_by_value)> ); // by value (FAIL on gcc)
+static_assert( ps_val<pval<int_const>> ); // by value
 
 //auto param_by_ref = pval<std::as_const(int_const)>{};
 auto param_by_ref = pval<static_cast<int const&>(int_const)>{};
-MSVC_OR(,  // MSVC thinks this is not a constant expression
+#ifndef _MSC_VER  // MSVC thinks this is not a constant expression
 static_assert( is_auto_NTTP_functor( param_by_ref ) ); // by id
 static_assert( ps_val<decltype(param_by_ref)> ); // by id
-)
+#endif
+
 //auto param_mutable = pval<non_const>{}; // not valid by value
 auto param_mutable_id = pval<std::as_const(non_const)>{}; // ok by id, but
 static_assert( ! is_auto_NTTP_functor( param_mutable_id ) ); // not constexpr
@@ -206,6 +208,12 @@ static_assert( get<1>(dval<int,1,2,3>{}) == 1 );
 static_assert( get<2>(dval<int,1,2,3>{}) == 2 );
 static_assert( get<3>(dval<int,1,2,3>{}) == 3 );
 
+#ifndef _MSC_VER
+#define NUA [[msvc::no_unique_address]]
+#else
+#define NUA [[msvc::no_unique_address]]
+#endif
+
 template <typename elem, val extentt>
 constexpr auto intrinsic_array_type()
 {
@@ -214,17 +222,21 @@ constexpr auto intrinsic_array_type()
   else
     return ty<elem[]>;
 };
+
 template <typename elem, val extt>
 using intrinsic_array_t =
       typename decltype(intrinsic_array_type<elem,extt>())::type;
 
-
 template <typ elementt, val extentt>
 struct array
 {
-  [[msvc::no_unique_address]] extentt extent{};
+  using array_t = intrinsic_array_t<type_t<elementt>, extentt>;
 
-  intrinsic_array_t<type_t<elementt>, extentt> data;
+  NUA extentt extent{};
+
+#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
+  NUA array_t data;
+#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
 
   auto begin() {return data;}
   auto end() {return data+extent;}
@@ -233,13 +245,17 @@ struct array
 template <typ elementt, val extentt>
 struct span
 {
-  [[msvc::no_unique_address]] elementt element_type{};
-  [[msvc::no_unique_address]] extentt extent{};
+  NUA elementt element_type{};
+  NUA extentt extent{};
   type_t<elementt>* data;
 
   auto begin() {return data;}
   auto end() {return data+extent;}
 };
+
+#include <cassert>
+#include <cstddef>
+#include <cstdio>
 
 int main()
 {
@@ -247,20 +263,29 @@ int main()
   array< metatype<int>, pval<4> > int4;
 
   unsigned char storage[16*sizeof(int)];
-  using chars = array< metatype<unsigned char>, dval<unsigned char> >;
-  auto dint = reinterpret_cast<chars&>(*new (storage) char{4});
+
+  using ints = array< metatype<int>, dval<int> >;
+  constexpr auto ints_data = offsetof(ints,data);
+
+#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
+  auto pint = reinterpret_cast<ints*>(new (storage) int{4});
+#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
+
+  assert( pint->begin() == pint->data );
 
   for (int i=0; auto& e : int4) e = i++;
-// for (int i=0; auto& e : dint) e = i++;
-//  for (int i=0; i != 4; ++i)
-//    if (*(int4.begin()+i) != storage[i+1]) return 1;
+  for (int i=0; auto& e : *pint) e = i++;
+  for (int i=0; i != 4; ++i)
+    if (*(int4.begin()+i) != i
+     || *reinterpret_cast<int*>(&storage[ints_data + i*sizeof(int)]) != i )
+       assert(false);
 
   static_assert( int4.extent == 4 );
   static_assert( sizeof int4 == sizeof(int) * 4 );
-  static_assert( sizeof dint == sizeof(char) );
+  static_assert( sizeof(ints) == sizeof(int) );
 
   span spint4{ty<int>, pval<4>{}, int4.begin()};
   span dpint4{ty<int>, dval<char>{4}, int4.begin()};
-  //dint.extent.value = 5;
-  dval{1} = {2};
+
+  return !(spint4.begin() == dpint4.begin());
 }

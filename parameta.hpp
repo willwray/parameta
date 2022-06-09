@@ -3,10 +3,10 @@
 //  Distributed under the Boost Software License, Version 1.0.
 //        http://www.boost.org/LICENSE_1_0.txt
 //
-//  Repo: https://github.com/Lemurian-Labs/lml_parameter
+//  Repo: https://github.com/Lemurian-Labs/lml_parameta
 
-#ifndef LML_PARAMETER_HPP
-#define LML_PARAMETER_HPP
+#ifndef LML_PARAMETA_HPP
+#define LML_PARAMETA_HPP
 
 /*
   parameta.hpp: C++20 concepts and meta types for parameterization
@@ -156,7 +156,7 @@
 
 namespace impl {
 
-// impl::functor<L> minimal 'value functor' requirement; has operator()()const
+// impl::vfunctor<L> minimal 'value functor' requirement; has operator()()const
 //
 template <typename L>
 concept vfunctor = requires (L const l) {l.operator()();};
