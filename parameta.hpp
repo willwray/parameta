@@ -154,13 +154,6 @@
 
 #include "namespace.hpp" // open namespace LML_NAMESPACE_ID
 
-namespace impl {
-
-// impl::vfunctor<L> minimal 'value functor' requirement; has operator()()const
-//
-template <typename L>
-concept vfunctor = requires (L const l) {l.operator()();};
-
 // impl::const_if_reference<T> concept = true for non-reference T
 //   else if T is a reference then true if it's a const reference
 //
@@ -168,6 +161,12 @@ template <typename T>
 concept const_if_reference =
        ! std::is_reference_v<T>
       || std::is_const_v<std::remove_reference_t<T>>;
+namespace impl {
+
+// impl::vfunctor<L> minimal 'value functor' requirement; has operator()()const
+//
+template <typename L>
+concept vfunctor = requires (L const l) {l.operator()();};
 
 // impl::functor_return<L>()
 //   returns std::type_identity of L::operator()()const return type if present
@@ -258,9 +257,12 @@ concept ps_val = s_val<T,V>
   There is implicit conversion to value_type.
 */
 template <decltype(auto) v, decltype(auto)...x>
-  requires impl::const_if_reference<decltype(v)>
 struct pval
 {
+  static_assert( const_if_reference<decltype(v)>
+             && (const_if_reference<decltype(x)> && ...),
+    "Use as_const: reference type value and metadata must be const&");
+
   using type = pval;
   using value_type = decltype(v); // may be an lvalue reference type
                                   // (but not an rvalue rererence)
@@ -291,9 +293,11 @@ inline constexpr pval<(v),(x)...> pv{};
 /* ************************************************************************ */
 
 template <typename T, decltype(auto)...x>
-  requires impl::const_if_reference<T>
 struct dval
 {
+  static_assert((const_if_reference<decltype(x)> && ...),
+    "Use as_const: reference type metadata must be const&");
+
   using type = dval;
   using value_type = T;
 
@@ -332,6 +336,9 @@ concept typ = requires { typename T::type; }
 template <typename T, decltype(auto)...x>
 struct metatype
 {
+  static_assert((const_if_reference<decltype(x)> && ...),
+    "Use as_const: reference type metadata must be const&");
+
   using type = T;
 
   /* -- size(dv) and get<I>(dv) could be free, better hidden -- */
