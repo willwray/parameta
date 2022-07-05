@@ -130,7 +130,20 @@
 
 #include "parameta_traits.hpp"
 
+#if defined (__cpp_consteval)
+#   define CONSTEVAL consteval
+#else
+#   define CONSTEVAL constexpr
+#endif
+
 #include "namespace.hpp" // open namespace LML_NAMESPACE_ID
+
+// get function declaration needed to find hidden friend get templates in C++17
+// fixed in C++20 by P0846 but there's no feature test macro to compile it out
+// (clang only warns about use of a C++20 extension, gcc fails to compile).
+//
+template <unsigned I, decltype(auto)...>
+extern CONSTEVAL decltype(auto) get();  // bogus declaration for ADL, see above
 
 /* ************************************************************************ */
 /* pval<v,x...> generalizes std::integral_constant<T,v>
@@ -151,8 +164,8 @@
 template <decltype(auto) v, decltype(auto)...x>
 struct pval
 {
-  static_assert( const_if_reference<decltype(v)>
-             && (const_if_reference<decltype(x)> && ...),
+  static_assert( const_if_reference_v<decltype(v)>
+             && (const_if_reference_v<decltype(x)> && ...),
     "Use as_const: reference type value and metadata must be const&");
 
   using type = pval;
@@ -166,12 +179,12 @@ struct pval
 
   /* -- size(pv) and get<I>(pv) could be free, better hidden -- */
 
-  friend consteval auto size(pval) { return 1 + sizeof...(x); }
+  friend CONSTEVAL auto size(pval) { return 1 + sizeof...(x); }
 
   template <unsigned I>
-    requires (I <= sizeof...(x))
-  friend consteval decltype(auto) get(pval)
+  friend CONSTEVAL decltype(auto) get(pval)
   {
+    static_assert(I <= sizeof...(x), "get<I> index out of bounds");
     if constexpr (I == 0) return (v);
     else return get<I-1>(pval<(x)...>{});
   }
@@ -187,7 +200,7 @@ inline constexpr pval<(v),(x)...> pv{};
 template <typename T, decltype(auto)...x>
 struct dval
 {
-  static_assert((const_if_reference<decltype(x)> && ...),
+  static_assert((const_if_reference_v<decltype(x)> && ...),
     "Use as_const: reference type metadata must be const&");
 
   using type = dval;
@@ -200,15 +213,24 @@ struct dval
 
   /* -- size(dv) and get<I>(dv) could be free, better hidden -- */
 
-  friend consteval auto size(dval) { return 1 + sizeof...(x); }
+  friend CONSTEVAL auto size(dval) { return 1 + sizeof...(x); }
 
+#if __cpp_concepts
   template <unsigned I>
     requires (I == 0)
   friend constexpr value_type get(dval dv) { return dv(); }
   //
   template <unsigned I>
     requires (I > 0 && I <= sizeof...(x))
-  friend consteval decltype(auto) get(dval) {return get<I-1>(pval<(x)...>{});}
+  friend CONSTEVAL decltype(auto) get(dval) {return get<I-1>(pval<(x)...>{});}
+#else
+  template <unsigned I>
+  friend CONSTEVAL decltype(auto) get(dval dv)
+  {
+    if constexpr (I == 0) return dv();
+    else return get<I-1>(pval<(x)...>{});
+  }
+#endif
 };
 template <typename T> dval(T const&) -> dval<T>;// const;
 
@@ -219,19 +241,19 @@ template <typename T> dval(T const&) -> dval<T>;// const;
 template <typename T, decltype(auto)...x>
 struct metatype
 {
-  static_assert((const_if_reference<decltype(x)> && ...),
+  static_assert((const_if_reference_v<decltype(x)> && ...),
     "Use as_const: reference type metadata must be const&");
 
   using type = T;
 
   /* -- size(dv) and get<I>(dv) could be free, better hidden -- */
 
-  friend consteval auto size(metatype) { return 1 + sizeof...(x); }
+  friend CONSTEVAL auto size(metatype) { return 1 + sizeof...(x); }
 
   template <unsigned I>
-    requires (I > 0 && I <= sizeof...(x))
-  friend consteval decltype(auto) get(metatype)
+  friend CONSTEVAL decltype(auto) get(metatype)
   {
+    static_assert(I > 0 && I <= sizeof...(x), "get<I> index out of bounds");
     return get<I-1>(pval<(x)...>{});
   }
 };
@@ -244,16 +266,15 @@ inline constexpr metatype<T,(x)...> ty{};
 /* ************************************************************************ */
 
 // xtra<I>(val) get the Ith metadata of a parameta
-//
-template <unsigned I, val v>
-consteval decltype(auto) xtra(v={}) { return get<I+1>(v{}); }
-
 // xtra<I>(metatype) get the Ith metadata of a metatype
 //
-template <unsigned I, typ t>
-consteval decltype(auto) xtra(t={}) { return get<I+1>(t{}); }
+#  if __cpp_concepts
 
-/* ************************************************************************ */
+template <unsigned I, val v>
+CONSTEVAL decltype(auto) xtra(v={}) { return get<I+1>(v{}); }
+
+template <unsigned I, typ t>
+CONSTEVAL decltype(auto) xtra(t={}) { return get<I+1>(t{}); }
 
 // type_t type alias to extract the concrete type from the meta type
 //
@@ -262,6 +283,28 @@ template <typ T> using type_t = typename T::type;
 // vtype_t type alias to extract the concrete type from the meta type
 //
 template <val T> using vtype_t = typename T::value_type;
+
+#else
+
+template <unsigned I, typename v, std::enable_if_t<is_val_v<v>>* = nullptr>
+CONSTEVAL decltype(auto) xtra(v = {})
+  { return get<I+1>(v{}); }
+
+template <unsigned I, typename t, std::enable_if_t<is_typ_v<t>>* = nullptr>
+CONSTEVAL decltype(auto) xtra(t = {})
+  { return get<I+1>(t{}); }
+
+// type_t type alias to extract the concrete type from the meta type
+//
+template <typename t, std::enable_if_t<is_typ_v<t>>* = nullptr>
+using type_t = typename t::type;
+
+// vtype_t type alias to extract the concrete type from the meta type
+//
+template <typename v, std::enable_if_t<is_val_v<v>>* = nullptr>
+using vtype_t = typename v::value_type;
+
+#endif
 
 /* ************************************************************************ */
 

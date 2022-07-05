@@ -4,8 +4,19 @@
 
 using namespace LML_NAMESPACE_ID;
 
-// Code from readme.md
+#if __cpp_concepts
+template <typename T> using is_structural_functor_value
+    = std::bool_constant<impl::structural_functor_value<T{}>>;
 
+template <typename T> using is_auto_structural_functor_value
+    = std::bool_constant<impl::auto_structural_functor_value<T{}>>;
+#else
+using impl::structural_functor_value;
+using impl::auto_structural_functor_value;
+#endif
+
+// Code from readme.md
+#if __cpp_concepts
   //  val auto value0 = 0;         // FAIL: 0 is not a val
       val auto value1 = dval{1};
       val auto value2 = pval<2>{};
@@ -35,48 +46,45 @@ constexpr auto sz = [](val auto v) {
     }(dval{1});
 static_assert( sz == 1 );
 
+typ auto tint = ty<int>;
+typ auto Tint = metatype<int>{};
+#endif
+
 static_assert( xtra<0>(ty<int,1>) == 1 );
 
-// is_auto_NTTP_functor(k)
-// is_decltype_auto_NTTP_functor(k)
-// functions to test if the functor argument is a valid NTTP
-//
-template <typename K>
-constexpr bool is_auto_NTTP_functor(K) {
-  return requires { impl::auto_structural<K{}()>; };
-}
-template <typename K>
-constexpr bool is_decltype_auto_NTTP_functor(K) {
-  return requires { impl::structural<K{}()>; };
-}
-
 // type
+
+#if __cpp_concepts
+#else
+template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool typ = is_typ_v<T,U>;
+template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool val = is_val_v<T,U>;
+template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool s_val = is_s_val_v<T,U>;
+template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool ps_val = is_ps_val_v<T,U>;
+#endif
 
 struct empty {};
 struct trait : std::true_type {};
 struct bc { using type = std::true_type; };
 
 static_assert( ! typ<empty> );
-static_assert(   typ<std::type_identity<int>> );
-static_assert( ! typ<std::type_identity_t<int>> );
+static_assert(   typ<metatype<int>> );
+static_assert( ! typ<type_t<metatype<int>>> );
 static_assert(   typ<std::add_lvalue_reference<int>> );
 
 static_assert( ! typ<std::true_type> );
 static_assert( ! typ<std::integral_constant<int,1>> );
-static_assert( ! typ<trait> );
+static_assert( std::is_same_v<impl::functor_return_or_fail<trait>,bool> );
+static_assert( /*! typ<trait>*/ impl::is_value_functor_v<trait> );
 static_assert(   typ<bc> );
 
-typ auto tint = ty<int>;
-typ auto Tint = metatype<int>{};
-
 metatype<int> Tt = ty<int>;
-static_assert( std::same_as< int, type_t<metatype<int>> > );
-static_assert( std::same_as< int, metatype<int>::type > );
+static_assert( std::is_same_v< int, type_t<metatype<int>> > );
+static_assert( std::is_same_v< int, metatype<int>::type > );
 
 // val
 
 struct arg7 { using value_type = int; int value; int operator()()const;                 };
-struct argb { using value_type = int; int value;                   operator int(); };
+struct argb { using value_type = int; int value;                        operator int(); };
 struct argd { using value_type = int;            int operator()()const; operator int(); };
 struct arge {                         int value; int operator()()const; operator int(); };
 struct argf { using value_type = int; int value; int operator()()const; operator int(); };
@@ -86,13 +94,6 @@ static_assert( ! val<argb> );
 static_assert( ! val<argd> );
 static_assert( ! val<arge> );
 static_assert(   val<argf> );
-
-template <argf> struct Argf : pval<true> {};
-#if not defined(__clang__)
-Argf<{1}> argf_cnttp;
-#else
-Argf<argf{1}> argf_cnttp;
-#endif
 
 static_assert( val<std::true_type> );
 static_assert( s_val<std::true_type> );
@@ -138,66 +139,80 @@ static_assert(   ps_val<cf> );
 // pval
 
 int const global_int_const = 1;
-auto global_by_ref = pval<(global_int_const)>{};
+using global_by_ref = pval<(global_int_const)>;
 
-static_assert( is_auto_NTTP_functor( global_by_ref ) ); // by id
-static_assert( ps_val<decltype(global_by_ref)> ); // by id
-static_assert( size(global_by_ref) == 1 );
+static_assert( is_auto_structural_functor_value< global_by_ref>() ); // by id
+static_assert( ps_val<global_by_ref> ); // by id
+static_assert( size(global_by_ref{}) == 1 );
 
 auto ft() {
 
 static int const int_const = 1;
-static_assert( is_auto_NTTP_functor([]{return int_const;}) );
+struct ic { constexpr int operator()()const{ return int_const; }};
+static_assert( impl::auto_structural_or_fail<ic{}()> );
+static_assert( is_auto_structural_functor_value<ic>() ); // value
 
 static int /*const*/ non_const = 1;
-static_assert( ! is_auto_NTTP_functor([]{return non_const;}) ); // value
-static_assert( ! is_auto_NTTP_functor([]()->auto&{return non_const;}) ); // id
+struct nc { int operator()()const{ return non_const; }};
+static_assert( ! is_auto_structural_functor_value<nc>() ); // value
+struct ncref { constexpr int& operator()()const{ return non_const; }};
+static_assert( ! is_auto_structural_functor_value<ncref>() ); // id
+struct staticlocal { int const& operator()()const{static constexpr int i = 1; return i;} };
+static_assert( ! is_auto_structural_functor_value<staticlocal>() );
 
-static_assert( ! is_auto_NTTP_functor([]{static constexpr int i = 1;
-                                        return i;}) );
-
-auto param_by_value = pval<int_const>{};
-static_assert( is_auto_NTTP_functor( param_by_value ) ); // by value
-static_assert( ps_val<decltype(param_by_value)> ); // by value
+using param_by_value = pval<int_const>;
+static_assert( is_auto_structural_functor_value< param_by_value >() ); // by value
+static_assert( ps_val<param_by_value> ); // by value
 
 //auto param_by_ref = pval<std::as_const(int_const)>{};
-auto param_by_ref = pval<static_cast<int const&>(int_const)>{};
+using param_by_ref = pval<static_cast<int const&>(int_const)>;
 #ifndef _MSC_VER  // MSVC thinks this is not a constant expression
-static_assert( is_auto_NTTP_functor( param_by_ref ) ); // by id
-static_assert( ps_val<decltype(param_by_ref)> ); // by id
+static_assert( is_auto_structural_functor_value< param_by_ref>() ); // by id
+static_assert( ps_val<param_by_ref> ); // by id
 #endif
 
 //auto param_mutable = pval<non_const>{}; // not valid by value
-auto param_mutable_id = pval<std::as_const(non_const)>{}; // ok by id, but
-static_assert( ! is_auto_NTTP_functor( param_mutable_id ) ); // not constexpr
-static_assert( ! ps_val<decltype(param_mutable_id)> ); // not constexpr
+using param_mutable_id = pval<std::as_const(non_const)>; // ok by id, but
+static_assert( ! is_auto_structural_functor_value< param_mutable_id>() ); // not constexpr
+static_assert( ! ps_val<param_mutable_id> ); // not constexpr
 
 static_assert( s_val<pval<true>,bool> );
 static_assert( s_val<pval<false>,bool> );
 static_assert( ! s_val<pval<false>,int> );
 
+#if __cpp_concepts
 s_val<bool> auto pbool = pval<true>{};
-constexpr s_val<int> auto pint = param_by_ref;
+constexpr s_val<int> auto pint = param_by_ref{};
 
 return pbool + pint;
+#endif
+return 1;
 }
 
 
+#if __cpp_concepts
+template <argf> struct Argf : pval<true> {};
+#if not defined(__clang__)
+Argf<{1}> argf_cnttp;
+#else
+Argf<argf{1}> argf_cnttp;
+#endif
 
 ps_val<bool> auto True = std::true_type{};
 ps_val<bool> auto False = std::false_type{};
 static_assert( True && ! False );
 constexpr auto tk = []<ps_val<bool>>(){return true;}.template operator()<std::true_type>();
 static_assert(tk);
+#endif
 
 // xtras
 
-static_assert(std::same_as<int, decltype(get<1>(pval<0,1,2,3>{}))> );
+static_assert(std::is_same_v<int, decltype(get<1>(pval<0,1,2,3>{}))> );
 int glober=0;
-consteval int const& conster(int& a){return a;}
-static_assert(std::same_as<int const&, decltype(get<1>(pval<0,(int const&)(glober),2,3>{}))> );
+constexpr int const& conster(int& a){return a;}
+static_assert(std::is_same_v<int const&, decltype(get<1>(pval<0,(int const&)(glober),2,3>{}))> );
 
-val auto p0123 = pval<0,1,2,3>{};
+auto p0123 = pval<0,1,2,3>{};
 
 static_assert( get<0>(p0123) == 0 );
 static_assert( get<1>(p0123) == 1 );
@@ -209,7 +224,7 @@ static_assert( xtra<1>(p0123) == 2 );
 static_assert( xtra<2>(p0123) == 3 );
 
 constexpr
-val auto d0123 = dval<int,1,2,3>{};
+auto d0123 = dval<int,1,2,3>{};
 
 static_assert( get<0>(dval<int,1,2,3>{0}) == 0 );
 static_assert( get<0>(d0123) == 0 );
@@ -223,6 +238,7 @@ static_assert( get<3>(dval<int,1,2,3>{}) == 3 );
 #define NUA [[no_unique_address]]
 #endif
 
+#if __cpp_concepts
 template <typename elem, val extentt>
 constexpr auto intrinsic_array_type()
 {
@@ -270,9 +286,11 @@ span(T,v, type_t<T>*) -> span<T,v>;
 #include <cstddef>
 #include <cstdio>
 #include <memory>
+#endif
 
 int main()
 {
+#if __cpp_concepts
   //std::array<int,4> a4;
   array< metatype<int>, pval<4> > int4;
 
@@ -302,4 +320,5 @@ int main()
   span dpint4{ty<int>, dval<char>{4}, int4.begin()};
 
   return !(spint4.begin() == dpint4.begin());
+#endif
 }
