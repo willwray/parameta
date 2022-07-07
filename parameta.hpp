@@ -14,45 +14,42 @@
 
   This header defines:
 
-    * pval<v> and dval<T> - types representing 'static' and 'dynamic' values.
+    * parameta<v> and dynameta<T>: types representing static and dynamic values.
       As 'meta value types' they generalize the API of std::integral_constant.
-      Both pval<v,x...> and dval<T,x...> can carry extra variadic metadata x...
-      Let's call them parameta types.
+      parameta<v,x...> and dynameta<T,x...> can carry variadic metadata x...
 
-    * metatype<T,x...> meta type that represents type T with optional metadata.
-      Like std::type_identity, plus possible extra variadic metadata x...
+    * typemeta<T,x...> meta type that represents type T with optional metadata.
+      Like std::type_identity, plus the possible extra variadic metadata x...
 
-    * pv<v> and ty<T>: variable template abbreviations 
+    * pv<v> and ty<T>: variable template abbreviations, saving eight characters:
 
-      pv<v> == pval<v>{}     // save 4 chars, abbreviated static parameta
-      ty<T> == metatype<T>{} // save 8 chars, abbreviated metatype object
+      pv<v> == parameta<v>{} // abbreviated static parameta variable
+      ty<T> == typemeta<T>{} // abbreviated typemeta object variable
 
-  pval<v> denotes a 'static' or 'parameter' value that, like integral_constant,
+  parameta<v> denotes a static or parameter value that, like integral_constant,
   has its value v statically encoded, manifestly usable as a template argument.
   As an empty type it can be laid out to occupy no storage in a class.
 
   Note: 'integral_constant' is a misnomer; it's not constrained to carry values
       of integral types only; any valid non-type template argument is admitted
       including the address or 'id' of static-storage variables, const or not.
-      It is a parameta type.
 
-  dval<T> denotes a 'dynamic' or 'deferred' value that has the same access API
-  as pval but its signature carries only the type T of the value, plus any meta
+  dynameta<T> denotes a dynamic or deferred value that has the same access API
+  as parameta but its signature carries only the type T of the value, plus meta-
   data needed to determine its runtime storage, initialization, access and use.
 
   "Dynamic" implies that the value isn't know statically at compile-time so is
   deferred to runtime, i.e. dynamic initialization is assumed and the runtime-
   determined value can't be used as a template argument or encoded in the type.
 
-  "Dynamic" doesn't imply mutability; a dval usually models immutable data
-  dval is a runtime-determined constant while pval is a compile-time constant.
+  "Dynamic" doesn't imply mutability; a dynameta usually models immutable data -
+  dynameta is a runtime-determined constant, parameta a compile-time constant.
 
-  "Static" doesn't imply immutability; non-pure pvals refer to mutable data
-  (note that an NTTP referent variable has to have static storage duration).
+  "Static" doesn't imply immutability; non-pure parameta refer to mutable data.
 
   Usage
 
-  Both pval and dval are primarily intended as meta value types to be used as
+  Both parameta and dynameta are intended as meta value types to be used as
   *type* template arguments. The types can carry unlimited variadic metadata.
   By using meta-types instead of values, the extra level of indirection allows
   a uniform and rich treatment of static and dynamic values, and of types.
@@ -64,58 +61,57 @@
 
   Examples
 
-  The val 'value' concept matches any dval-or-pval-like meta value type:
+  The metavalue concept matches any dynameta-or-parameta-like meta-value type:
 
-      val auto value0 = 0;      // FAIL: 0 is an int, not a val meta value type
-      val auto value1 = dval{1};
-      val auto value2 = pval<2>{};
+      metavalue auto value0 = 0;      // FAIL: 0 is an int, not a metavalue type
+      metavalue auto value1 = dynameta{1};
+      metavalue auto value2 = parameta<2>{};
 
-  The value type can be constrained by adding a type T argument, val<T>:
+  The value type can be constrained by adding a type T argument, metavalue<T>:
 
-      val<char> auto nchar = pval<0x0>{}; // FAIL: 0 is not a char
-      val<char> auto char0 = pval<'0'>{};
-      val<char> auto stdval = std::integral_constant<char,0>{}; // 0 -> '0'
+      metavalue<char> auto nchar = parameta<0x0>{}; // FAIL: 0x0 is not a char
+      metavalue<char> auto char0 = parameta<'0'>{};
+      metavalue<char> auto stdc0 = std::integral_constant<char,0>{}; // 0 -> '0'
 
-  The s_val 'static value' concept matches only pval-like meta value types:
+  The metastatic concept matches only parameta-like 'static' meta-value types:
 
-      s_val auto dynNo = dval{4}; // FAIL: dval isn't s_val; dynamic not static
-      s_val auto statY = pv<5>;
-      const float flo[4][4]{};
-      s_val<float[4][4]> auto floref = pv<(flo)>; // refers to global var flo
+      metastatic auto dynNo = dynameta{4}; // FAIL: dynameta isn't metastatic
+      const float mf[4][4]{};
+      metastatic<float[4][4]> auto mfref = pv<(mf)>; // refers to static var mf
 
-  Here, floref refers to a non-constant-expression variable so is not pure.
-  The ps_val 'pure static value' concept matches only pure pval types:
+  Here, mfref refers to a non-constant-expression variable so is not pure.
+  The metaconst 'pure static value' concept matches only pure parameta types:
 
-      ps_val auto floref = pv<(flo)>;    // FAIL: flo value isn't constexpr
-      ps_val auto pi = pval<3.14159f>{};
+      metaconst auto mfref = pv<(mf)>;  // FAIL: mf value isn't constexpr
+      metaconst auto pi = pv<3.14159f>;
 
   Summary
 
-  metatype<T>, a type meta-type like std::type_identity, is joined by
-  dval<T> and pval<v>, value meta-types like std::integral_constant
+  typemeta<T>, a type meta-type like std::type_identity, is joined by
+  dynameta<T> and parameta<v>, value meta-types like std::integral_constant
   with optional extra metadata x...
 
-    metatype<T,x...> "meta type"; type = T
+    typemeta<T,x...> "meta type"; type = T
 
-    dval<T,x...>  "dynamic value"; value_type = T, value = runtime-determined
-    pval<v,x...> "parameter value"; value_type = decltype(v), value = v
+    dynameta<T,x...> "dynamic value"; value_type = T, value = runtime-determined
+    parameta<v,x...> "static value"; value_type = decltype(v), value = v
 
   Signatures:
 
-  dval:                                      "dval"
+  dynameta:                                  "dynameta"
       template                                 |
-      <typename T, decltype(auto)...x> struct dval {T value; value_type = T; };
+      <typename T, decltype(auto)...x> struct dynameta {T value; value_type = T;
                 |                   |                            |
           value_type              ['xtra' x...]               typedef
-  pval:                                   |                      |
+  parameta:                               |                      |
       template                            |                      |
-      <decltype(auto) v, decltype(auto)...x> struct pval { value_type = ...
+      <decltype(auto) v, decltype(auto)...x> struct parameta { value_type = ...
                       |                              |           |
-             NTTP arg value                        "pval"  decltype(v)
+             NTTP arg value                        "parameta"  decltype(v)
 
   API:
 
-  pval<v> and dval<T> share the common API of std::integral_constant<T,v>:
+  parameta<v> and dynameta<T> share the core API of std::integral_constant<T,v>:
 
     * A 'value_type' member type alias
     * A 'value' member variable of value_type, possibly const qualified
@@ -124,8 +120,8 @@
 
   Any extra x... arguments are accessed by get<I> or xtra<I>
 
-    * get<I>(val)  returns the Ith v,x... argument
-    * xtra<I>(val) returns the Ith   x... argument == get<I+1>(val)
+    * get<I>(metavalue)  returns the Ith v,x... argument
+    * xtra<I>(metavalue) returns the Ith   x... argument == get<I+1>(metavalue)
 */
 
 #include "parameta_traits.hpp"
@@ -138,23 +134,17 @@
 
 #include "namespace.hpp" // open namespace LML_NAMESPACE_ID
 
-// get function declaration needed to find hidden friend get templates in C++17
-// fixed in C++20 by P0846 but there's no feature test macro to compile it out
-// (clang only warns about use of a C++20 extension, gcc fails to compile).
-//
-template <unsigned I, decltype(auto)...>
-extern CONSTEVAL decltype(auto) get();  // bogus declaration for ADL, see above
-
 /* ************************************************************************ */
-/* pval<v,x...> generalizes std::integral_constant<T,v>
+/* parameta<v,x...> generalizes std::integral_constant<T,v>
                 - it eliminates the type parameter T
                 - it admits variadic 'xtra' NTTP metadata x...
 
-  pval<v> encodes a value v, by value
+  parameta<v> encodes a value v, by value
               or a const& v, by id
 
-  pval 'parameter value' is a static meta value type; an NTTP-templated type
-  that encodes a value in its non-type template parameter.
+  parameta 'parameter value' is a static meta-value type;
+  an NTTP-templated type that encodes a value in its NTTP
+  (non-type template parameter).
 
   The static constexpr member variable 'value' memos the parameter value v.
   The member type alias value_type = decltype(v) can be an lvalue reference.
@@ -162,13 +152,13 @@ extern CONSTEVAL decltype(auto) get();  // bogus declaration for ADL, see above
   There is implicit conversion to value_type.
 */
 template <decltype(auto) v, decltype(auto)...x>
-struct pval
+struct parameta
 {
   static_assert( const_if_reference_v<decltype(v)>
              && (const_if_reference_v<decltype(x)> && ...),
-    "Use as_const: reference type value and metadata must be const&");
+    "Reference-type value and metadata must be const& - use as_const(v)");
 
-  using type = pval;
+  using type = parameta;
   using value_type = decltype(v); // may be an lvalue reference type
                                   // (but not an rvalue rererence)
   static constexpr value_type value = v;
@@ -177,33 +167,33 @@ struct pval
   constexpr value_type operator()() const noexcept {return v;}
   constexpr operator value_type() const noexcept {return v;}
 
-  /* -- size(pv) and get<I>(pv) could be free, better hidden -- */
+  /* size(pv) and get<I>(pv) should be free, clang doesn't agree */
 
-  friend CONSTEVAL auto size(pval) { return 1 + sizeof...(x); }
+  friend CONSTEVAL auto size(parameta) { return 1 + sizeof...(x); }
 
   template <unsigned I>
-  friend CONSTEVAL decltype(auto) get(pval)
+  friend CONSTEVAL decltype(auto) get(parameta)
   {
     static_assert(I <= sizeof...(x), "get<I> index out of bounds");
     if constexpr (I == 0) return (v);
-    else return get<I-1>(pval<(x)...>{});
+    else return get<I-1>(parameta<(x)...>{});
   }
 };
 
-// pv variable template for a pval object
+// pv variable template for a parameta object
 //
 template <decltype(auto) v, decltype(auto)...x>
-inline constexpr pval<(v),(x)...> pv{};
+inline constexpr parameta<(v),(x)...> pv{};
 
 /* ************************************************************************ */
 
 template <typename T, decltype(auto)...x>
-struct dval
+struct dynameta
 {
   static_assert((const_if_reference_v<decltype(x)> && ...),
-    "Use as_const: reference type metadata must be const&");
+    "Reference-type metadata must be const& - use as_const(x)");
 
-  using type = dval;
+  using type = dynameta;
   using value_type = T;
 
   value_type value;
@@ -211,35 +201,37 @@ struct dval
   constexpr value_type operator()() const noexcept {return value;}
   constexpr operator value_type() const noexcept {return value;}
 
-  /* -- size(dv) and get<I>(dv) could be free, better hidden -- */
+  /* size(pv) and get<I>(pv) should be free, clang doesn't agree */
 
-  friend CONSTEVAL auto size(dval) { return 1 + sizeof...(x); }
+  friend CONSTEVAL auto size(dynameta) { return 1 + sizeof...(x); }
 
 #if __cpp_concepts
   template <unsigned I>
     requires (I == 0)
-  friend constexpr value_type get(dval dv) { return dv(); }
+  friend constexpr value_type get(dynameta dv) { return dv(); }
   //
   template <unsigned I>
     requires (I > 0 && I <= sizeof...(x))
-  friend CONSTEVAL decltype(auto) get(dval) {return get<I-1>(pval<(x)...>{});}
+  friend CONSTEVAL decltype(auto) get(dynameta) {
+    return get<I-1>(parameta<(x)...>{});
+  }
 #else
   template <unsigned I>
-  friend CONSTEVAL decltype(auto) get(dval dv)
+  friend constexpr decltype(auto) get(dynameta dv)
   {
     if constexpr (I == 0) return dv();
-    else return get<I-1>(pval<(x)...>{});
+    else return get<I-1>(parameta<(x)...>{});
   }
 #endif
 };
-template <typename T> dval(T const&) -> dval<T>;// const;
+template <typename T> dynameta(T const&) -> dynameta<T>;
 
-/* ****************** metatype  ************************* */
+/* ****************** typemeta  ************************* */
 
-// metatype<T,x...> equivalent to std::type_identity, plus xtra metadata x...
+// typemeta<T,x...> like std::type_identity, plus xtra metadata x...
 //
 template <typename T, decltype(auto)...x>
-struct metatype
+struct typemeta
 {
   static_assert((const_if_reference_v<decltype(x)> && ...),
     "Use as_const: reference type metadata must be const&");
@@ -248,41 +240,41 @@ struct metatype
 
   /* -- size(dv) and get<I>(dv) could be free, better hidden -- */
 
-  friend CONSTEVAL auto size(metatype) { return 1 + sizeof...(x); }
+  friend CONSTEVAL auto size(typemeta) { return 1 + sizeof...(x); }
 
   template <unsigned I>
-  friend CONSTEVAL decltype(auto) get(metatype)
+  friend CONSTEVAL decltype(auto) get(typemeta)
   {
     static_assert(I > 0 && I <= sizeof...(x), "get<I> index out of bounds");
-    return get<I-1>(pval<(x)...>{});
+    return get<I-1>(parameta<(x)...>{});
   }
 };
 
-// ty variable template for a metatype object
+// ty variable template for a typemeta object
 //
 template <typename T, decltype(auto)...x>
-inline constexpr metatype<T,(x)...> ty{};
+inline constexpr typemeta<T,(x)...> ty{};
 
 /* ************************************************************************ */
 
-// xtra<I>(val) get the Ith metadata of a parameta
+// xtra<I>(metavalue) get the Ith metadata of a parameta
 // xtra<I>(metatype) get the Ith metadata of a metatype
 //
 #  if __cpp_concepts
 
-template <unsigned I, val v>
+template <unsigned I, metavalue v>
 CONSTEVAL decltype(auto) xtra(v={}) { return get<I+1>(v{}); }
 
-template <unsigned I, typ t>
+template <unsigned I, metatype t>
 CONSTEVAL decltype(auto) xtra(t={}) { return get<I+1>(t{}); }
 
 // type_t type alias to extract the concrete type from the meta type
 //
-template <typ T> using type_t = typename T::type;
+template <metatype T> using type_t = typename T::type;
 
 // vtype_t type alias to extract the concrete type from the meta type
 //
-template <val T> using vtype_t = typename T::value_type;
+template <metavalue T> using vtype_t = typename T::value_type;
 
 #else
 
@@ -304,6 +296,12 @@ using type_t = typename t::type;
 template <typename v, std::enable_if_t<is_val_v<v>>* = nullptr>
 using vtype_t = typename v::value_type;
 
+// get function declaration needed to find hidden friend get templates in C++17
+// fixed in C++20 by P0846 but there's no feature test macro to compile it out
+// (clang only warns about use of a C++20 extension, gcc fails to compile).
+//
+template <unsigned I, decltype(auto)...>
+extern CONSTEVAL decltype(auto) get();  // bogus declaration for ADL in C++17
 #endif
 
 /* ************************************************************************ */

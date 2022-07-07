@@ -1,6 +1,6 @@
-# Parameter types for templated models
+# Meta-parameter types for templated models
 
-## C++20 concepts and types for parameterization
+## Meta-types and concepts for parameterization
 
 <details><summary>Copyright &copy; 2022 Lemurian Labs. Distributed under the Boost Software License, V1.0</summary>
 
@@ -41,12 +41,8 @@ Also at [boost.org](http://www.boost.org/LICENSE_1_0.txt) and accompanying file 
 **Parameters** are model variables that a system modeler choses to 'freeze'
 to be viewed as constants in analysis and design, or in a deployed system.
 
-> Different fields have different definitions of 'parameter'.  
-We take a **systems modeling** perspective.
-
 Parameter tuning, being a process that modifies values, appears
-incompatible with C++ template parameters that are immutable
-compile-time constants.
+incompatible with C++ template parameters as immutable compile-time constants.
 It turns out that a crack in the template permafrost allows template arguments
 to reference global mutable data. We will exploit this feature.
 
@@ -61,33 +57,41 @@ This header provides tools to parameterize models for a kind of 'generic statici
 to select some arguments as dynamic runtime-determined values and others as
 static compile-time constants.
 
-The tools leverage C++20 features to enable DSL-like template signatures.
+Meta-types are defined that generalize std::type_identity
+and std::integral_constant to represent type and non-type parameters,
+with additional metadata.
+Non-type, i.e. value, parameters are the focus.
+C++20 admits a far larger class of values as non-type template parameters,
+including classes.
+This in turn enables DSL-like template signatures.
 
 E.g. `std::span` and `mdspan` employ `std::dynamic_extent` as a special value for
 the template argument to switch between static and dynamic specializations.
-Here, meta types serve this purpose in more generic, uniform and richer ways.
+Here, meta types serve this purpose in more generic, uniform and richer ways
+which allow to specify extents with smaller types than size_t
+and to encode repeated extents.
 
-Template class types `pval` and `dval` represent static and dynamic parameter values
+Template class types `parameta` and `dynameta` represent static and dynamic parameter values
 in templated interfaces:
   
-* `pval<value[,x...]>` : an empty class carrying a static value parameter,  
-* `dval<typename[,x...]>` : a class wrapping a value of the given type.  
+* `parameta<value[,x...]>` : an empty class carrying a static value parameter,
+* `dynameta<typename[,x...]>` : a class wrapping a value of the given type.
 
 They have the API of `std::integral_constant`; a no-arg call `operator()()const`  
 and implicit conversion to its return type, the `value_type` member type alias.
 
-*  `pval<v[,x]>` generalizes `std::integral_constant<T,v>` compile-time constant,
-*  `dval<T[,x]>` represents a dynamic runtime-determined value with a shared API:
+*  `parameta<v[,x]>` generalizes `std::integral_constant<T,v>` compile-time constant,
+*  `dynameta<T[,x]>` represents a dynamic runtime-determined value with a shared API:
 
 ```c++
                     value type
                        v
     template <typename T, decltype(auto)...x>
-    struct dval;                           ^
+    struct dynameta;                       ^
                                          ['xtra' optional arg[s]]
-                                                v
+                                                 v
     template <decltype(auto) v, decltype(auto)...x>
-    struct pval;             ^
+    struct parameta;         ^
                     NTTP arg value
 ```
 
@@ -118,40 +122,43 @@ and implicit conversion to its return type, the `value_type` member type alias.
                         NTTP arg value
 ```
 
-**`pval`** drops `integral_constant`'s explicit first type argument `T` 
-leaving the type implicit  
-as the type of the value `v`:
+**`parameta`** drops `integral_constant`'s explicit first type argument `T`
+leaving the type implicit as the type of the value `v`:
 
 ```c++
     using value_type = decltype(v); // may be an lvalue reference type
 ```
 
-The changed template signature, and resulting change in `value_type` defintion are the  
-only differences between `pval` and  `integral_constant`, which can then be aliased as:
+The changed template signature, and resulting change in `value_type`
+defintion are the only differences between `parameta` and  `integral_constant`,
+which can then be aliased as:
 
 ```c++
-    template <typename T, T v> using integral_constant = pval<v>;
+    template <typename T, T v> using integral_constant = parameta<v>;
 ```
 
-Note that there are no constraints on the type `T` beyond that in the second parameter `T v`  
-it is implicit that it must be usable as the type of a non-type template parameter (NTTP).  
-In fact, the name 'integral_constant' only suggests its intended usage;
-`T` needn't be integral.  
-In particular, lvalue reference types have always been admitted,
-which may refer to non-const variables - mutable global data.  
-Now, C++20 allows class-type NTTP, with certain 'structural' type restrictions.
+Note that there are no constraints on the type `T` beyond that in the second parameter `T v`
+it is implicit that it must be usable as the type of a non-type template parameter (NTTP).
 
-`pval`'s value `v` is an NTTP (non-type template parameter, so has to be of structural type).
+In fact, the name 'integral_constant' only suggests its original intended usage;
+`T` needn't be integral.
+In particular, lvalue reference types have always been admitted,
+which may refer to non-const variables of any type; general mutable global data.
+
+Now that C++20 allows class-type NTTP
+(with certain 'structural' type restrictions)
+the name integral_constant is positively anachronistic.
+
+`parameta`'s value `v` is an NTTP (non-type template parameter, so has to be of structural type).
 
 The leading `decltype(auto)` placeholder directly accepts argument values.  
 When passed a object lvalue, of static storage duration, a reference is deduced.  
-However, `pval` requires that any reference value is a constant reference
+However, `parameta` requires that any reference value is a constant reference
 
 ```c++
-    float global;              // static mutable global data
-    pval< global > oops;       // COMPILE FAIL, C++: value is not constexpr
-    pval<(global)> wrong;      // requirement FAIL: reference to mutable
+    float global;             // static mutable global data
+    parameta< global > oops;  // COMPILE FAIL: value isn't constexpr
+    parameta<(global)> wrong; // requirement FAIL: reference to mutable
 
-    pval<as_const(global)> gc; // deduces value_type = float const&
+    parameta<as_const(global)> gc; // deduces value_type = float const&
 ```
-

@@ -14,26 +14,32 @@
 
   This header defines:
 
-    * val -> s_val -> ps_val; three concepts for matching meta value types;
-      val 'value' -> s_val 'static value' -> ps_val 'pure static value'
-      as modeled by increasingly static val types dval<T>, pval<(id)>, pval<v>
+  Concepts (when compiled with C++20 concepts support):
 
-    * typ - a concept matching meta types that represent types, as modeled by
-      metatype, std::type_identity and other type-valued type traits.
+    * metatype - a concept matching meta types that represent types
+      as modeled by lml::metatype, std::type_identity and other type traits
 
-  This API is captured in the val concept and refined by s_val and then ps_val:
+    * metavalue -> metastatic -> metaconst, for types that represent values
+      meta-'value' -> -'static value' -> -'pure static value'
+      as modeled by increasingly static meta-value types
+      dynameta<T>, parameta<(id)>, parameta<v>
 
-       val<T> models type T with the API above; pval-like or dval-like
-     s_val<T> models a val with static, compile-time value or id; pval-like
-    ps_val<T> models a pval with pure compile-time value; pure pval-like
+    metavalue<T> matches T with the non-static API of std::integral_constant
+    metastatic<T> matches metavalue T with static, compile-time value or id
+    metaconst<T>  matches metastatic T with pure compile-time value (not id)
 
-  Concepts                 concept name:      Modeled by / accepted types:
+                         concept name:   Modeled by / accepted types:
   
-                   meta type       typ:        metatype [type_identity]
+              meta type    metatype:     metatype [type_identity]
 
-                  meta value       val:      dval, pval [integral_constant]
-           meta static value     s_val:            pval [integral_constant]
-      meta pure static value    ps_val:       pure pval [integral_constant]
+              meta value   metavalue:    dynameta, parameta [integral_constant]
+       meta static value   metastatic:             parameta [integral_constant]
+  meta pure static value   metaconst:         pure parameta [integral_constant]
+
+  Equivalent variable template predicate traits are defined, available in C++17
+
+   is_metatype_v
+   is_metavalue_v -> is_metastatic_v -> is_metaconst_v
 */
 
 #include <type_traits>
@@ -142,9 +148,9 @@ using is_auto_structural_functor_value = decltype(
 )
 } // impl;
 
-/* ********** val -> s_val -> ps_val meta-value-type concepts ************ */
+/* ********** metavalue -> metastatic -> metaconst ************ */
 
-// val <T, V = unqualified return type of T::operator()()const, or void>
+// metavalue <T, V = unqualified return type of T::operator()()const, or void>
 //
 //   A concept to match the non-static part of std::integral_constant API
 // T:
@@ -157,7 +163,7 @@ CPP_CONCEPTS(
 
 template <typename T,
           typename V = remove_cvref_t<impl::functor_value_type_or_void<T>>>
-concept val =
+concept metavalue =
     std::is_same_v<V, remove_cvref_t<typename T::value_type>>
  && std::is_same_v<typename T::value_type, impl::functor_return_or_fail<T>>
  && (std::is_same_v<typename T::value_type,std::remove_cv_t<decltype(T::value)>>
@@ -167,12 +173,12 @@ concept val =
 
 template <typename T,
           typename V = remove_cvref_t<impl::functor_value_type_or_void<T>>>
-inline constexpr bool is_val_v =
-                     CPP_CONCEPTS(val<T,V>)
-                  NO_CPP_CONCEPTS(false);
+inline constexpr bool is_metavalue_v =
+                          CPP_CONCEPTS(metavalue<T,V>)
+                       NO_CPP_CONCEPTS(false);
 NO_CPP_CONCEPTS(
 template <typename T>
-inline constexpr bool is_val_v<T, std::common_type_t<decltype(T::value),
+inline constexpr bool is_metavalue_v<T, std::common_type_t<decltype(T::value),
                                                      typename T::value_type>> =
     std::is_same_v<typename T::value_type, impl::functor_return_or_fail<T>>
  && (std::is_same_v<typename T::value_type,std::remove_cv_t<decltype(T::value)>>
@@ -180,66 +186,66 @@ inline constexpr bool is_val_v<T, std::common_type_t<decltype(T::value),
  && std::is_convertible_v<T, typename T::value_type>;
 )
 
-// s_val <T, V = see-above*>
-//   'static val' concept matches a val whose value or id is usable as an NTTP
-//   (it is a structural type) and is itself a default constructible empty type
+// metastatic <T, V = see-above*> 'static meta-value' concept
+//   matches metavalue T with value or id usable as an NTTP (structural type)
+//   and is itself a default constructible empty type
 //
 CPP_CONCEPTS(
 
 template <typename T,
           typename V = remove_cvref_t<impl::functor_value_type_or_void<T>>>
-concept s_val = val<T,V>
+concept metastatic = metavalue<T,V>
              && std::is_empty_v<T>
              && impl::structural_functor_value<T{}>;
 )
 template <typename T,
           typename V = remove_cvref_t<impl::functor_value_type_or_void<T>>>
-inline constexpr bool is_s_val_v =
-                     CPP_CONCEPTS(s_val<T,V>)
-                  NO_CPP_CONCEPTS(is_val_v<T,V>
+inline constexpr bool is_metastatic_v =
+                     CPP_CONCEPTS(metastatic<T,V>)
+                  NO_CPP_CONCEPTS(is_metavalue_v<T,V>
                                && std::is_empty_v<T>
                                && impl::is_structural_functor_value<T>());
 
-// ps_val <T, V = see-above*>
-//   'pure static val' concept matches an s_val whose value is usable as an NTTP
+// metaconst <T, V = see-above*> 'pure static meta-value' concept 
+//   matches metastatic T with value usable as an NTTP
 //   (i.e. auto(value) is of structural type)
 //
 CPP_CONCEPTS(
 
 template <typename T,
           typename V = remove_cvref_t<impl::functor_value_type_or_void<T>>>
-concept ps_val = s_val<T,V>
+concept metaconst = metastatic<T,V>
               && impl::auto_structural_functor_value<T{}>;
 )
 template <typename T,
           typename V = remove_cvref_t<impl::functor_value_type_or_void<T>>>
-inline constexpr bool is_ps_val_v =
-                      CPP_CONCEPTS(ps_val<T,V>)
-                   NO_CPP_CONCEPTS(is_s_val_v<T,V>
+inline constexpr bool is_metaconst_v =
+                      CPP_CONCEPTS(metaconst<T,V>)
+                   NO_CPP_CONCEPTS(is_metastatic_v<T,V>
                           && impl::is_auto_structural_functor_value<T>());
 
-/* ************** 'typ' meta-type concept ******************* */
+/* ************** 'metatype' meta-type concept ******************* */
 
-// typ concept for types that represent types, e.g. std::type_identity
+// metatype concept for types that represent types, e.g. std::type_identity
 //   requires empty class type with member type alias 'type' and no no-arg
 //   call operator() (to disqualify std::integral_constant and derived types)
 //
 CPP_CONCEPTS(
 
 template <typename T>
-concept typ = requires { typename T::type; }
+concept metatype = requires { typename T::type; }
             && std::is_empty_v<T>
             && ! impl::value_functor<T>;
 )
 template <typename T, typename = void>
-inline constexpr bool is_typ_v =
-                    CPP_CONCEPTS(typ<T>)
-                 NO_CPP_CONCEPTS(false);
+inline constexpr bool is_metatype_v =
+                         CPP_CONCEPTS(metatype<T>)
+                      NO_CPP_CONCEPTS(false);
 NO_CPP_CONCEPTS(
 template <typename T>
-inline constexpr bool is_typ_v<T, std::void_t<typename T::type>>
-                               = std::is_empty_v<T>
-                              && ! impl::is_value_functor_v<T>;
+inline constexpr bool is_metatype_v<T, std::void_t<typename T::type>>
+                                    = std::is_empty_v<T>
+                                   && ! impl::is_value_functor_v<T>;
 )
 
 #include "namespace.hpp" // close configurable namespace
