@@ -702,9 +702,9 @@ The `dynameta` type itself doesn't encode a value.
 
 [`staticmeta`](#staticmeta) is an empty type that carries a value
 via an NTTP in its type's template signature,
-either directly as a structural constant (`metaconst`)
+either directly as a structural constant, `metaconst`,
 or indirectly as a handle to a static object
-of any type and mutability ($\text{metadynst}$).
+of any type and mutability, $\text{metadynst}$.
 It does double duty, conceptually,
 able to carry any `metastatic` value kind.
 
