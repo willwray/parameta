@@ -1,8 +1,9 @@
-# Meta-parameter types for templated models
-
-## Meta-types and concepts for parameterization
+# Meta-parameterization for template APIs,<br>meta-implementation for generic staticity
 
 <details><summary>Copyright &copy; 2022 Lemurian Labs. Distributed under the Boost Software License, V1.0</summary>
+
+#
+##
 
 ### **Boost Software License** - Version 1.0 - August 17th, 2003
 
@@ -38,127 +39,1412 @@ Also at [boost.org](http://www.boost.org/LICENSE_1_0.txt) and accompanying file 
 
 --------------
 
-**Parameters** are model variables that a system modeler choses to 'freeze'
-to be viewed as constants in analysis and design, or in a deployed system.
+## Meta-types and concepts for parameterization
 
-Parameter tuning, being a process that modifies values, appears
-incompatible with C++ template parameters as immutable compile-time constants.
-It turns out that a crack in the template permafrost allows template arguments
-to reference global mutable data. We will exploit this feature.
+Header-only C++ library. Targets C++20, limited C++17 backport support.  
+Tested on recent GCC, Clang and MSVC;
+see [platform notes](#platform-notes) for portability.
+
+### Header files
+
+"[`parameta_traits.hpp`](#parameta_traitshpp)"
+defines concepts and traits for meta parameter types  
+"[`parameta.hpp`](#parametahpp)"
+defines meta types that model the meta parameter concepts
+
+### Introduction
+
+The `parameta` library supports
+a 'meta' approach to template parametrization
+that tackles difficulties
+in the design of templates that take many value parameters.
+The initial use cases are number systems and multidimensional arrays,
+with parameters specifying bit-widths, biases, bases,
+array bounds, layout and indexing.
+The core idea is to parameterize using meta value types,
+i.e. types that represent values,
+with API based on `std::integral_constant`
+but representing values of any type
+and generalized to include 'dynamic' runtime-determined values,
+not necessarily constant.
+
+Three concepts, `metavalue`, `metastatic` and `metaconst`,
+capture the hierarchy of increasing static and constexpr constraint
+on meta value parameters and their storage duration.
+
+Three maker functions, `makevalue`, `makestatic` and `makeconst`,
+help to construct meta values based on
+two types, `dynameta` and `staticmeta`,
+that model non-static and static-or-constexpr meta values.
+
+A `metatype` concept and `typemeta` type
+are defined for completeness,
+along with a universal `metapara` concept.
+All types can carry arbitrary metadata, to specify usage say.
+
+Meta parameterization also crosses over into 'meta implementation'
+if the meta parameter types are 'injected' as members into
+the parameterized class.
+Then, flexible and generic
+implementations are achieved without
+explicit template specializations and with
+reduced need for meta-programming.
+Some initial usage patterns are sketched;
+more experience is needed to evolve idioms of use.
+
+### Contents
+
+* Rationale: [Motivation](#motivation)
+  * [C++ template parameters](#c-template-parameters)
+, [Tuning](#to-tune-a-parameter)
+, [Going meta](#going-meta)
+* Concepts: [`parameta_traits.hpp`](#parameta_traitshpp)
+  * [Meta type concept](#meta-type-concept): [`metatype`](#metatype)
+  * [Meta value concepts](#meta-value-concepts):
+    * [`metavalue`](#metavalue), [`metastatic`, `metaconst`](#metastatic-and-metaconst)
+    * [Value-type constraint](#value_type-constraint)
+    * [Levels of constraint](#levels-of-constraint)
+    * [Disjoint concepts and `metadyn`](#disjoint-concepts-and-metadyn)
+  * [Summary](#summary)
+* Types: [`parameta.hpp`](#parametahpp)
+  * [Class templates](#class-templates),
+  * [Type meta parameter](#type-meta-parameter) `typemeta`
+  * [Value meta parameters](#value-meta-parameters) `dynameta`, `staticmeta`
+    * [Meta value API](#meta-value-api) - [`dynameta`](#dynameta), [`staticmeta`](#staticmeta)
+    * [`dynameta` deduction guide](#dynameta-deduction-guide)
+    * [Maker functions](#maker-functions) `makestatic`
+    * [Metadata access](#metadata-access) `metasize`, `metaget`
+* Example: [Usage](#example-usage)
+* Appendices:
+  * [Platform notes](#platform-notes)
+  * [Array value type](#array-value_type) TL/DR avoid array value_type
+  * [Function value type](#function-value_type)
+
+--------------
+
+### **Parameters, parameterize, parametrize**
+
+<dl>
+<dt>Parameters</dt>
+<dd>model variables that a system modeler choses to 'freeze'<br>
+to be viewed as constants during analysis and design</dd>
+<dt>Parameterize</dt>
+<dd>choose a set of variables to act as parameters</dd>
+<dt>Parametrize</dt>
+<dd>select values for the chosen set of parameters</dd>
+</dl>
+
+'Parameter', used alone, implies a value and **values** are the focus here.
+
+--------------
+
+## Motivation
+
+### C++ template parameters
+
+Though normally taken as *types*,
+C++ always had *non-type*
+[template parameters](https://en.cppreference.com/w/cpp/language/template_parameters) -
+NTTPs - let's just call them 'value parameters'.
+Formerly limited to integer-like constants,
+including pointers and references to static variables,
+C++20 admitted floating point value parameters
+and values of class type - a game changer.
+
+### To tune a parameter
+
+Parameter *tuning*, as a process that modifies values,
+appears incompatible with C++ template parameters
+as immutable constants frozen at compile time.
+However, in the case of pointers or references to static variables,
+the value of the referent variable itself may be mutable -
+only its 'id' is static.
+This can be exploited to allow a degree of runtime parameter tuning,
+with no impact on class size.
+Parameter consumers hold a reference and share read-only access
+to the static value
+while only the owner has runtime write access.
+
+Even more flexibly, the template argument
+can act as an instruction to instance a non-static data member
+to be dynamic-initialized at runtime.
+This clearly adds to class size,
+with redundancy if maintained as a class-invariant 'parameter'.
+Otherwise, per-object state is useful for dynamic sizes.
+This is also appropriate for interface types, prototyping,
+larger objects, JIT transition, and for interaction with dynamic languages.
+
+### Going meta
 
 Flexible model development calls for freedom to deal with parameters
 dynamically during design,
-and then transition to statically compiled values
+and then switch to statically compiled values
 to be constant-folded into code for release.
+Going meta facilitates such 'generic staticity'.
+The additional 'meta' level of indirection allows more uniform
+and expressive template APIs
+with flexibility to tune parameters during development.
+
+Skip straight to [Usage examples](#example-usage)
+to see the ideas in action,
+or continue on through concepts and types.
+
+--------------
+
+# parameta_traits.hpp
+
+Depends on `<type_traits>`
+
+This header provides concepts for 'meta parameterization'
+of template signatures:
+
+* $\text{metatype }$
+* $\text{metavalue} < \text{metastatic} < \text{metaconst }$
+
+The idea is to admit
+meta parameter types instead of type or value parameters directly:
+
+```c++
+  template <typename T, int N>            struct array;
+  template <metatype t, metavalue<int> n> struct meta_array;
+```
+
+Here, `t` and `n` are both *types* but represent a type and a value.
+If `N` is called a 'value parameter' then
+`n` is the corresponding 'meta value parameter'.
+The meta value concepts support generic staticity
+in that `n` may be a compile time constant
+or simply a 'herald' for a dynamic extent to be determined at runtime.
+
+#
+
+## Meta type concept
+
+### **`metatype`**
+
+* `metatype<Q>` concept matches types `Q` that represent types  
+
+A **meta type** has the properties of a type trait like `type_identity`:
+
+* An empty class with a member typedef `type`
+* No call `operator()`  
+(to exclude types like `integral_constant`, see below)
+
+#
+
+## Meta value concepts
+
+The meta value concepts form a subsumption hierarchy
+that can also be seen to sort types into nested sets
+(using set notation directly on concepts for exposition):
+
+* `metavalue` $<$ `metastatic` $<$ `metaconst`
+* `metavalue` $\supset$ `metastatic` $\supset$ `metaconst`
+
+```mermaid
+""
+flowchart
+    subgraph metavalue
+        subgraph metastatic
+            subgraph metaconst
+                c(constmeta)
+            end
+        end
+    end
+```
+
+Each more constrained concept, shown more deeply $\supset$ nested,
+implies the outer less-constrained concepts and subsumes them,
+that is, it beats them in $<$ ordering for overload resolution, etc.
+The diagram can also be seen
+as the top view of a concept pyramid, with `metaconst` atop
+(`constmeta` is a `metaconst` type).
+
+### **`metavalue`**
+
+* `metavalue<Q,VT>` concept matches types `Q` that represent values
+
+The secondary `VT` parameter defaults to the return type of `Q::operator()()const`,
+if it exists, otherwise `void` and the concept is `false`
+(c.f. [value type constraint](#value-type-constraint)).
+
+A **meta value** type `Q` has at least the access API of
+[`integral_constant`](https://en.cppreference.com/w/cpp/types/integral_constant):
+
+* A `value_type` member typedef (may be a reference type)  
+* A `value` member variable of `value_type` (may be static or const qualified)
+* A no-arg call `operator()()const -> value_type` returning `value`
+* An implicit conversion `operator value_type()const` returning `value`
+
+Importantly, there's no requirement that
+`value` is a static or a constant expression  
+(there's also no requirement on a member typedef `type` definition).
+
+### **`metastatic`** and **`metaconst`**
+
+* `metastatic<Q,VT>` concept: a `metavalue`
+with constexpr value or static lvalue id
+* `metaconst<Q,VT>`  concept: a `metavalue`
+with constexpr value
+
+`Q` is now required to be an empty class type,
+so the value has to be encoded in the type.  
+As such, `value` is required to be usable as a template argument:
+
+* `metastatic` requires `value` initializes a template<`decltype(auto)`>  
+placeholder that accepts any valid NTTP including static lvalues by reference  
+(not necessarily of constexpr or const value, or of structural value type).
+
+* `metaconst` requires `value` $^\dagger$ initializes a template<`auto`> placeholder  
+that accepts only constexpr values of structural value type.<br>
+$^\dagger$ for an array, its initial element `value[0]`,
+recursed down to non-array.
+
+So `metaconst` guarantees constexpr `value` of structural `value_type`  
+while `metastatic` may further refer to a static  lvalue of any object `value_type`
+
+> A '[structural type](https://eel.is/c++draft/temp.param#def:type,structural)'
+is any type acceptable for a non-type template argument;  
+a scalar type, a (restricted) literal class type
+or an lvalue reference type.  
+Here, we emphasize 'structural ***value*** *type*' to exclude reference types.  
+[Array value type](#array-value_type)
+ is not classified as a structural type, yet.
+
+<details><summary>
+Exceptionally, a non-<code>metaconst</code> meta value type can still have
+constexpr value
+</summary>
+
+because a value rejected by `metaconst` for not having
+structural type can be accepted as `metastatic`
+if it is a static object
+(concepts cannot check for constexpr value;
+'can initialize template<`auto`>' is imprecise).
+
+</details>
+
+The 'const' in `metaconst` means constexpr 'compile-time constant'.
+The 'static' in `metastatic` comes from 'compile-time static',
+the union of 'static storage duration' id and 'constexpr value'.
+
+`std::integral_constant` models `metastatic`,
+and its constexpr subset `metaconst`.
+
+> '[`integral_constant`](https://en.cppreference.com/w/cpp/types/integral_constant)'
+was always a misnomer, moreso since C++20:
+>
+>* It needn't be integral and its value isn't necessarily constant !
+>* Any valid non-type template parameter type is allowed  
+including the reference 'id' of a static-storage variable, const or not.
+>* '`structural_constant_or_static_lvalue_reference`' ?
+
+This library provides a [`staticmeta<v>`](#staticmeta) class template
+with a `staticmetacast<T,v>` explicit-typed alias
+that implements the full static API of `integral_constant`.
+
+#
+##
+
+### Value-type constraint
+
+A meta value concept can be used to constrain a variable declaration:
+
+```c++
+  metavalue auto chx4 = char{4}; // FAIL; char isn't a metavalue
+  metavalue auto chr4 = staticmetacast<char,4>{}; // a metavalue
+```
+
+and can also constrain to a given value type, say `char`:
+
+```c++
+  metavalue<char> auto charchar = staticmeta<'0'>{}; // ok; char==char
+  metavalue<char> auto mismatch = staticmeta<0>{}; // FAIL; char!=int
+```
+
+with the secondary type template parameter of the meta value concept
+specified as `<char>`.
+
+Unfortunately, there's no direct way to constrain
+the value type to a concept such as `std::integral`.
+To do that, you have to define a new named concept,
+or use ad hoc constraints.
+
+#
+##
+
+### Levels of constraint
+
+Concepts `metavalue` $<$ `metastatic` $<$ `metaconst`
+accept increasingly constrained meta value types:
+
+* `metavalue` is least constrained, so most inclusive.
+It accepts class wrappers that hold
+a non-static data member value,
+as well as accepting metastatic types
+(that include metaconst types).
+
+* `metastatic` requires an empty class so rejects class wrappers.
+The value must be a valid NTTP.
+It is more inclusive than `metaconst` because it also accepts
+references to general static objects.
+
+* `metaconst` is most constrained; it has a guaranteed constexpr value
+of structural type.
+It rejects all else.
+The value is necessarily compile-time initialized,
+never dynamic initialized.
+
+### Disjoint concepts and `metadyn`
+
+<details><summary>
+The concepts segregate types into disjoint sets
+between each concept boundary.
+</summary>
+
+A `metavalue` type satisfies exactly one of:
+
+$$
+           !\, \sf{metastatic}\,\sf{metavalue}
+\text{ | } !\, \sf{metaconst}\,\sf{metastatic}
+\text{ | } \sf{metaconst }
+$$
+
+`metaconst` stands on its own as a compile-time constant value.  
+Non-`metaconst` types are collectively  "$\text{metadyn}$":
+
+$$
+\underbrace{ \text{metadyna}
+\text{ | } \text{metadynst} }
+\text{ | } \sf{metaconst}
+$$
+
+$$
+\underbrace{ \text{metadyn}
+\text{ | } \sf{metaconst} }
+$$
+
+$$
+\sf{metavalue}
+$$
+
+Decomposition via `metastatic` is more useful:
+
+$$
+\text{metadyna}
+\text{ | } \underbrace{  \text{metadynst}
+\text{ | } \sf{metaconst} }
+$$
+
+$$
+\underbrace{ \text{metadyna}
+\text{ | } \sf{metastatic} }
+$$
+
+$$
+\sf{metavalue}
+$$
+
+This isolates the disjoint $\text{metadyna}$ concept, as
+modeled by the [`dynameta`](#dynameta) type.
+
+The $\text{metadyn}$ concepts are only notional, not implemented.
+Derived disjoint concepts aren't as applicable as hierarchical concepts
+but are useful in picturing the full taxonomy.
+They're discussed in the expanding section below
+for those seeking conceptual closure.
+
+</details>
+
+<details><summary>metadyn concept taxonomy</summary>
+
+The `metavalue` types that aren't `metaconst` are presumed
+dynamic-initialized meta values.
+These $\text{metadyn}$ types decompose into two disjoint sets
+according to their value's storage duration, automatic or static,
+as determined by `metastatic`:
+
+* $\text{metadyn} = \text{metadyna} \sqcup \text{metadynst}$
+
+```mermaid
+""
+flowchart
+    subgraph metadyn
+        subgraph metadyna
+            A(dynameta)
+        end
+        subgraph metadynst
+            D(dynstmeta)
+        end
+    end
+```
+
+`metavalue` types are the total disjoint union of
+$\text{metadyna}$  $\sqcup$ $\text{metadynst}$  $\sqcup$ `metaconst` types.  
+This is shown below in two ways, composing via $\text{metadyn}$ or via `metastatic`.
+
+* `metavalue` $=$ $\text{metadyn}$ $\sqcup$ `metaconst`
+
+```mermaid
+""
+flowchart
+    subgraph meta[metavalue]
+        subgraph metadyn
+            A(dynameta)
+            D(dynstmeta)
+        end
+        subgraph metaconst
+            C(constmeta)
+        end
+    end
+```
+
+* `metavalue` $=$  $\text{metadyna}$ $\sqcup$ `metastatic`
+
+```mermaid
+""
+flowchart
+    subgraph metavalue
+        subgraph metadyna
+            a(dynameta)
+        end
+        subgraph metastatic
+            direction LR
+            d(dynstmeta)
+            c(constmeta)
+        end
+    end
+```
+
+### **`metadyn`**
+
+Importantly, `metavalue` and `metastatic` do not require
+a 'pure' constexpr value.
+
+$\text{metadyn}$ is a `metavalue` that isn't `metaconst`; a 'dynamic' meta value:
+
+* $\text{metadyn}$ $=$ $!$ `metaconst metavalue`
+
+'Dynamic' here means 'dynamic initialization',
+as opposed to `constinit` constant initialization.
+
+$\text{metadyn}$ opens the door to dynamic meta values
+whose actual value is 'deferred' to be determined at runtime,
+and may be mutable.
+However, $\text{metadyn}$ closes the door to `metaconst`,
+so it is proscriptive as a constraint.
+For testing if a known `metavalue` type is $\text{metadyn}$,
+simply test `!metaconst`.
+
+$\text{metadyn}$ is either $\text{metadynst}$ or $\text{metadyna}$,
+depending if it is or isn't `metastatic`:
+
+* $\text{metadynst}$ $=$ `metastatic` $\text{metadyn}$ :
+'dynamic-static' (or non-structural) meta value
+* $\text{metadyna}$ $=$ $!$ `metastatic` $\text{metadyn}$ : 'dynamic-automatic' meta value
+
+### **`metadynst`**
+
+* $\text{metadynst}$ $=$ $!$ `metaconst metastatic`  
+  $\text{metadynst}$ $\sqcup$ `metaconst` $=$ `metastatic`
+
+$\text{metadynst}$ is a `metastatic` that isn't `metaconst`.
+
+The $st$ 'static' suffix in $\text{metadyn}st$ means 'static storage duration'
+(or $nst$ hints acceptance of 'non-structural types', possibly con*st*expr).
+A $\text{metadynst}$ type refers to a static variable that is dynamic-initialized
+(or, exceptionally, a non-structural static that happens to be
+constant initialized).
+
+### **`metadyna`**
+
+* $\text{metadyna}$ $=$ $!$ `metastatic metavalue`
+
+$\text{metadyna}$ is a `metavalue` that isn't `metastatic`.
+
+The $a$ suffix in $\text{metadyn}a$ indicates 'automatic storage duration'.
+It is destined for regular memory and runtime dynamic-initialization.
+The type is just a 'herald' used only for signalling purposes.
+
+### Dynamic heralds
+
+Like `std::dynamic_extent`,
+in intent, $\text{metadyn}$ types act as compile time heralds of a runtime value,
+with more flexibility to specify value_type and storage duration.
+As types, rather than special values,
+arbitrary metadata can be added to further specify
+layout, usage constraints and more.
+
+Constraining to $\text{metadyn}$ demands a runtime dynamic value so
+excludes compile-time values that could be constant-folded away.
+For this reason, the 'dyn' concepts are not recommended
+as constraints for parameter placeholders
+and are not provided in case of misuse.
+The hierarchical concepts are sufficient.
+
+</details>
+
+#
+
+## Summary
+
+Climbing down the ladder of meta value concepts:
+
+* A **`metaconst`** type `c` represents a pure constexpr value, guaranteed.  
+e.g. `staticmeta<42>`, equivalent to `integral_constant<int,42>`.<br>
+<br>
+The value is accessed by `c::value`, or `c{}.value`, or `c{}()`  
+or by implicit conversion,
+`typename c::value_type{c{}}`<br>
+
+* A `metastatic` type represents either a constexpr value (above)  
+or refers to a static variable (the next paragraph below).  
+<br>
+A `metastatic` type that is not `metaconst` is a $\bold{metadynst}$ type.  
+It refers to an object of static storage duration with value presumed  
+to be runtime-determined,
+i.e. dynamically initialized during static init.  
+e.g. `staticmeta<(s)>`, equivalent to `integral_constant<int&, s>`<br>
+<br>
+The value of an instance `d` is accessed at runtime
+by `d()` or by `d.value`  
+or by implicit conversion.
+Use read-only access to ensure substitutability.<br>
+<br>
+Non-`metaconst` types are $\text{metadyn}$.
+They are either static (above)  
+or non-static, i.e. automatic (the next paragraph below).  
+<br>
+A `metavalue` type that is not `metastatic` is a $\bold{metadyna}$ type.  
+It represents a runtime-determined value to be laid out
+in automatic storage  
+for dynamic initialization during a program run
+(or a 'herald' of a runtime value).  
+E.g. `dynameta<int>` (defined below) (there's no `std` equivalent type).
+
+* A `metavalue` is any of the above, no more no less.  
+It has at least the non-static access API of `integral_constant`
+
+Meta value types are always treated as constants in generic code,
+with 'dynamic' parameters viewed as runtime-determined constants.
+Any tuning or mutation is carefully confined to separate code.
+
+APIs should accept by `metavalue` if possible,
+by `metastatic` if zero-size is needed at runtime,
+or by `metaconst` if a guaranteed constant is absolutely required.
+This allows implementations to be as generic as possible
+in their level of staticity,
+using `if constexpr` as needed to select more constrained code.
+
+--------------
 
 # parameta.hpp
 
-This header provides tools to parameterize models for a kind of 'generic staticity';
-to select some arguments as dynamic runtime-determined values and others as
-static compile-time constants.
+Depends on "[`parameta_traits.hpp`](#parameta_traitshpp)" which depends on `<type_traits>`
 
-Meta-types are defined that generalize std::type_identity
-and std::integral_constant to represent type and non-type parameters,
-with additional metadata.
-Non-type, i.e. value, parameters are the focus.
-C++20 admits a far larger class of values as non-type template parameters,
-including classes.
-This in turn enables DSL-like template signatures.
+This header provides class templates
+that model the meta parameter concepts,
+along with helpers.
 
-E.g. `std::span` and `mdspan` employ `std::dynamic_extent` as a special value for
-the template argument to switch between static and dynamic specializations.
-Here, meta types serve this purpose in more generic, uniform and richer ways
-which allow to specify extents with smaller types than size_t
-and to encode repeated extents.
+## Class templates
 
-Template class types `parameta` and `dynameta` represent static and dynamic parameter values
-in templated interfaces:
-  
-* `parameta<value[,x...]>` : an empty class carrying a static value parameter,
-* `dynameta<typename[,x...]>` : a class wrapping a value of the given type.
+* [`typemeta`](#type-meta-parameter) meta type, generalizes `type_identity`$\\[1ex]$
+* [`dynameta`](#dynameta) meta value, with API of `integral_constant`
+* [`staticmeta`](#staticmeta) meta value, generalizes `integral_constant`  
+* [`dynameta` deduction guide](#dynameta-deduction-guide)
 
-They have the API of `std::integral_constant`; a no-arg call `operator()()const`  
-and implicit conversion to its return type, the `value_type` member type alias.
+## Alias templates
 
-*  `parameta<v[,x]>` generalizes `std::integral_constant<T,v>` compile-time constant,
-*  `dynameta<T[,x]>` represents a dynamic runtime-determined value with a shared API:
+* [Explicit type alias](#explicit-type-alias) :
+`staticmetacast<T,v>` $\rightarrow$ `staticmeta<v>`
+
+## Function templates
+
+* [Maker functions](#maker-functions) : `makestatic`
+* [Metadata access](#metadata-access)
+static member functions `metasize`, `metaget`
+
+--------------
+
+## Type meta parameter
+
+### **`typemeta`**
+
+* `typemeta<T>` satisfies `metatype`, with optional metadata
+`typemeta<T,x...>`
+
+The metadata `x...` is intended for general specification of how `T` is to be used.
 
 ```c++
-                    value type
-                       v
-    template <typename T, decltype(auto)...x>
-    struct dynameta;                       ^
-                                         ['xtra' optional arg[s]]
-                                                 v
-    template <decltype(auto) v, decltype(auto)...x>
-    struct parameta;         ^
-                    NTTP arg value
+    template <typename Type, decltype(auto)...x>
+    struct typemeta
+    {
+        using type = Type;
+        ...
 ```
 
-<details><summary>For comparison, here's the template signature of
-<code>std::integral_constant</code><br>
-&nbsp;&nbsp;&nbsp;(click for an implementation)</summary>
+Equivalent to `std::type_identity`, with metadata,
+this type meta parameter is provided for completeness;
+value meta parameters, i.e. non-type meta parameters, are the focus here.
 
- https://en.cppreference.com/w/cpp/types/integral_constant
+--------------
+
+## Value meta parameters
+
+### **`dynameta`** and **`staticmeta`**
+
+The meta value types form a hierarchy
+of increasing static and constexpr constraint.  
+E.g. given object type `T`, `constexpr int c = 1` and `static int s = 1`:
+
+* `dynameta<`**`T`**`>` satisfies `metavalue`
+* `staticmeta<(`**`s`**`)>` satisfies `metavalue` && `metastatic`
+* `staticmeta<`**`c`**`>` satisfies `metavalue` && `metastatic` && `metaconst`
+
+[`dynameta`](#dynameta) simply wraps some type `T`.
+The `dynameta` type itself doesn't encode a value.
+
+[`staticmeta`](#staticmeta) is an empty type that carries a value
+via an NTTP in its type's template signature,
+either directly as a structural constant (`metaconst`)
+or indirectly as a handle to a static object
+of any type and mutability ($\text{metadynst}$).
+It does double duty, conceptually,
+able to carry any `metastatic` value kind.
 
 ```c++
-    template <typename T, T v>   struct integral_constant
-    {
-      using value_type = T;
-      using type = integral_constant;
-      static constexpr value_type value = v;
-      constexpr operator value_type() const noexcept { return value; }
-      constexpr value_type operator()() const noexcept { return value; }
-    };
+  dynameta<int>{1};  // metavalue, not metastatic, initialized to 1
+  staticmeta<(s)>{}; // metastatic like integral_constant<int&,d>{}
+  staticmeta<1>{};   // metaconst, like integral_constant<int,1>{}
+```
+
+Optional metadata `x...` is also admitted; `dynameta<T,x...>`, `staticmeta<v,x...>`
+
+#
+##
+
+### Meta value API
+
+As required by the [`metavalue`](#meta-value-concepts) concept,
+`staticmeta` and `dynameta` have the access API of
+`integral_constant<T,v>`,
+but their template signatures split `T` and `v`:
+
+* `dynameta<T>` takes only the type template parameter
+* `staticmeta<v>` takes only the value parameter and deduces
+its value type as `decltype(v)`
+
+### **`dynameta`**
+
+`dynameta<typename, x...>` :
+a class wrapping a value of the given parameter value type:
+
+```c++
+  template <typename ValueType, decltype(auto)...x>
+  struct dynameta
+  {
+    using value_type = ValueType;
+    value_type value;
+    // ... integral_constant access API
+```
+
+### **`staticmeta`**
+
+`staticmeta<value, x...>` : an empty class carrying a generic NTTP parameter:
+
+```c++
+  template <decltype(auto) Value, decltype(auto)...x>
+  struct staticmeta
+  {
+    using value_type = decltype(Value);
+    static constexpr value_type value = Value;
+    // ... integral_constant access API
+```
+
+The remaining access API in both cases is the same as
+[`std::integral_constant`](https://en.cppreference.com/w/cpp/types/integral_constant):
+
+```c++
+  template <typename ValueType, ValueType Value>
+  struct integral_constant
+  {
+    using value_type = ValueType;
+    static constexpr value_type value = Value;
+
+    using type = integral_constant;
+    constexpr operator value_type() const noexcept { return value; }
+    constexpr value_type operator()() const noexcept { return value; }
+  };
+```
+
+Now `integral_constant`
+can be fully implemented as an alias of `staticmeta`:
+
+```c++
+  template <typename T, T v> using integral_constant = staticmeta<v>;
+```
+
+There's no `std` type wrapper equivalent to `dynameta`,
+a wrapped type substitutable in read-only use
+with statically constrained meta values.
+
+#
+##
+
+### `dynameta` deduction guide
+
+[Constructor Template Argument Deduction](https://en.cppreference.com/w/cpp/language/class_template_argument_deduction)
+is supported and works for `dynameta` in unsuprising ways:
+
+```c++
+  dynameta{1}        // CTAD -> dynameta<int> initialized to 1
+  dynameta<float>{1} // No CTAD; explicit type given, arg converted
+  dynameta{float{1}} // Convert arg type explicitly before CTAD
+```
+
+Use braced initialization;
+ `dynameta` is an aggregate so braces ban narrowing conversions.
+
+CTAD is a convenient way to construct a `dynameta`
+from a single value of obvious type
+but is limited and implicit.
+Providing an explicit type is often better, or necessary. 
+[Maker functions](#maker-functions) do more powerful deduction
+beyond the capability of CTAD and are more generic.
+
+<details><summary>
+A CTAD guide disables
+default decay-copy of array and function values
+</summary>
+
+In C++20, aggregate classes like `dynameta`
+gain an implicit aggregate guide
+corresponding to `auto` deduction
+of the wrapped type.
+Unfortunately, this forces decay-copy of the argument value,
+so array and function values `auto`-decay to pointers.
+
+A deduction guide is added to bar the implicit decay
+and to support C++17 CTAD:
+
+```c++
+template <typename T> dynameta(T const&)
+                   -> dynameta<std::conditional_t<
+                               std::is_function_v<T>, T&, T >>;
+```
+
+See also appendices
+[Array `value_type`](#array-value_type)
+and [Function `value_type`](#function-value_type).
+
+`dynameta`, as a meta value, requires access functions
+that return by `value_type` so fails to instantiate
+for arrays - a forbidden return type.
+
+</details>
+
+* Array values deduce as `dynameta<T[N]>` (which then fail instantiation)
+* Functions are deduced and initialized by reference,
+not by pointer.
+
+#
+##
+
+### Explicit type alias
+
+**`staticmetacast`**`<T,v>` $\rightarrow$ `staticmeta<v>`
+
+This alias gives an explicit-typed template signature
+fully equivalent to `integral_constant<T,v>`:
+
+```c++
+ template <typename T, T v> using staticmetacast = staticmeta<v>;
+```
+
+The explicit specification of `T` = `value_type`
+then effectively performs a static-cast of `v` to that type.
+On its own, `staticmeta<v>` deduces `v`'s value category implicitly
+by `decltype(auto)` rules which can conflate value
+with value type in subtle and sometimes surprising ways.
+
+<details><summary>Pitfalls of <code>decltype(auto)</code></summary>
+
+Initialization of generic `decltype(auto)` placeholder.
+
+This topic is hard to summarize.
+For background see
+[value categories](https://en.cppreference.com/w/cpp/language/value_category)
+and [`decltype(auto)`](https://en.cppreference.com/w/cpp/language/auto)
+and David Mazières 2021 blog
+[C++ value categories and decltype demystified](https://www.scs.stanford.edu/~dm/blog/decltype.html).
+
+When used as a template placeholder parameter, `decltype(auto)`
+deduction is also constrained by NTTP validity.
+Unlike variables but like function parameters,
+template value parameters
+with [array](#array-value_type) or [function](#function-value_type) type
+are 'adjusted' to pointers after deduction,
+effectively resulting in `auto` deduction
+with decay-copy semantics -
+counter to the no-decay semantics of `decltype(auto)`.
+
+A `decltype(auto)` parameter has only one shot at deduction.
+Based on its deduced value category for the argument,
+it may incorrectly accept or unhelpfully reject potential
+other-category matches.
+
+Three cases that call for value category conversion:
+
+```c++
+  using std::cout; // Obviously non-const non-structural global var
+
+//staticmeta<cout>   // REJECT ok? value not constexpr or structural
+  staticmeta<(cout)> // ACCEPT ok? binds a mutable reference
+  staticmeta<as_const(cout)> // Binds a const reference; safer
+
+  using std::numbers::pi; // Obviously constexpr structural global
+
+  staticmeta<pi>   // by-value, good
+  staticmeta<(pi)> // by-reference, unintended?
+
+  constexpr int a[4]{}; // a[i] is an lvalue of constexpr value
+
+  staticmeta<a[0]> // lvalue result so binds a reference, unintended?
+  staticmeta<auto(a[0])> // by-value via auto(expr) decay-copy, c++23
+```
+
+The user has to take control of deduction.
+
+* A static variable id is an rvalue so
+may be rejected by-value
+even though acceptable as an lvalue.
+* Vice versa, a static lvalue is accepted by-reference
+even when it is acceptable by-value,
+* or accepted as a non-const reference when const was wanted.
+
+Given these pitfalls, why use `decltype(auto)`?  
+It's the correct choice for a generic list of values.
+It's used as the generic static value parameter,
+as well as all metadata parameters.
+
+Can type aliases dodge `decltype(auto)` difficulties?  
+Separate types, or type-aliases that forward to a generic type,
+sacrifice genericity for explicit specificity,
+cannot consider the other category,
+add their own edge cases
+and, currently, have portability issues.
+
+The solution is to use template 'maker' function overloads...
+
+</details>
+
+#
+##
+
+### Maker functions
+
+Function template overloads provide
+a sane way to initialize a `decltype(auto)` parameter, e.g.:
+
+1. **`makestatic`**`<X>()` $\rightarrow$ `staticmeta<X>()`
+2. `makestatic<X>()` $\rightarrow$ `staticmetacast<typeof(X)const&, X>()`  
+(1) is selected if `X` is valid *by-value*, otherwise (2) *by-reference*,
+else fail.
+
+<details><summary>
+The overloads free users from any need to consider
+argument value category conversions.
+</summary>
+
+```c++
+  makestatic<X>() vs staticmeta<X>() ?
+                  or staticmeta<(X)>() ?
+                  or staticmeta<auto(X)>() ?
+                  or staticmetacast<typeof(X),X>() ?
+                  or staticmeta<std::as_const(X)>() ?
+                  or staticmetacast<typeof(X)const&, X>() ?
+```
+
+`decltype(auto)` deduction rules are sensitive to value category
+so an initializer may have to be converted prior to deduction;
+an id expression is converted to lvalue with parens `(id)`,
+an lvalue is const-qualified by `static_cast` or `as_const(lval)`,
+or an lvalue is converted to rvalue by a `static_cast`
+or `auto{lval}` in C++23.
+
+</details>
+
+<details><summary>
+Examples : <code>makestatic</code> vs <code>staticmeta</code>
+</summary>
+
+Just plug in the argument directly - no need for conversions; Yay.
+
+```c++
+// Simple case: constexpr value of structural value type:
+  staticmeta<42>();
+  makestatic<42>(); // Yay; identical
+
+  constexpr int constv = 42; // constexpr variable
+  staticmeta<constv>(); // -> staticmeta<42>()
+  makestatic<constv>(); // Yay; same
+
+// Non-constexpr variable (irrelevant if structural or not)
+  int staticm; // static mutable variable; non-constexpr 
+//staticmeta<staticm>(); // FAIL: not constexpr
+  staticmeta<(staticm)>(); // lvalue conversion, non-const : int&
+  staticmeta<as_const(staticm)>(); // const-lvalue conversion
+  makestatic<staticm>(); // Yay; deduces const-lvalue : int const&
+
+// Array arguments can decay to pointer
+  constexpr int arrayc[]{21,42}; // constexpr array, structural elem
+  staticmeta<arrayc>(); // Oops: decay-to-pointer : int const*
+  staticmeta<(arrayc)>(); // lvalue conversion requires parens
+  makestatic<arrayc>(); // Yay; no decay, deduces : int const(&)[2]
+
+// lvalue arguments don't auto-convert to rvalue when it's possible
+// (i.e. when constexpr value of structural value type)
+  staticmeta<arrayc[1]>(); // Oops: binds an lvalue : int const&
+  staticmeta<auto{arrayc[1]}>(); // rvalue conversion (C++23)
+  makestatic<arrayc[1]>(); // Yay; staticmeta<42>{} value_type : int
+
+  int arraym[2] = {}; // static array, mutable; non-constexpr
+  staticmeta<arraym>(); // Oops: decay-to-non-const-pointer : int*
+  staticmeta<(arraym)>(); // Convert to non-const lvalue : int(&)[2]
+  staticmeta<as_const(arraym)>(); // Convert to const-lvalue
+  makestatic<arraym>(); // Yay; no decay - deduces : int const(&)[2]
+
+  void funct(){} // function definition
+  staticmeta<funct>(); // Oops, decayed to pointer  -> void(*)()
+  makestatic<funct>(); // Yay; no decay : reference -> void(&)()
 ```
 
 </details>
 
-```c++
-                  value type
-                       v 
-    template <typename T, T v>    struct integral_constant;
-                            ^
-                        NTTP arg value
-```
+Simply put; pass by-value beats pass by-reference, and there's no decay:
 
-**`parameta`** drops `integral_constant`'s explicit first type argument `T`
-leaving the type implicit as the type of the value `v`:
+1. If argument `X` can be accepted by value $^\dagger$
+then it is accepted by value  
+2. else if `X` is a static lvalue then it's accepted by const reference.  
+$^\dagger$ Arrays and functions pass by-reference,
+not via decay-copy.
 
-```c++
-    using value_type = decltype(v); // may be an lvalue reference type
-```
+A by-reference result is always const-qualified
+for its intended usage as a read-only parameter.
 
-The changed template signature, and resulting change in `value_type`
-defintion are the only differences between `parameta` and  `integral_constant`,
-which can then be aliased as:
+#### Details
 
-```c++
-    template <typename T, T v> using integral_constant = parameta<v>;
-```
+<details><summary>
+Function overload pair for generic parameter value category deduction.
+</summary>
 
-Note that there are no constraints on the type `T` beyond that in the second parameter `T v`
-it is implicit that it must be usable as the type of a non-type template parameter (NTTP).
+Two function overloads consider both
+by-value `<auto>` and by-reference `<auto const&>` potential matches
+*independently* and then choose the most appropriate by overload resolution.
+Contrast with 'one-shot' `<decltype(auto)>` deduction that conflates
+value category with  value
+so may inappropriately accept by-reference,
+or unhelpfully reject by-value, potential matches
+via the other category.
 
-In fact, the name 'integral_constant' only suggests its original intended usage;
-`T` needn't be integral.
-In particular, lvalue reference types have always been admitted,
-which may refer to non-const variables of any type; general mutable global data.
-
-Now that C++20 allows class-type NTTP
-(with certain 'structural' type restrictions)
-the name integral_constant is positively anachronistic.
-
-`parameta`'s value `v` is an NTTP (non-type template parameter, so has to be of structural type).
-
-The leading `decltype(auto)` placeholder directly accepts argument values.  
-When passed a object lvalue, of static storage duration, a reference is deduced.  
-However, `parameta` requires that any reference value is a constant reference
+E.g. `makestatic` overloads; `auto` by-value and `auto const&` by-reference:
 
 ```c++
-    float global;             // static mutable global data
-    parameta< global > oops;  // COMPILE FAIL: value isn't constexpr
-    parameta<(global)> wrong; // requirement FAIL: reference to mutable
+  template <auto val>                   // by-value overload
+  constexpr staticmeta<val> makestatic(); // (want worse-match)
 
-    parameta<as_const(global)> gc; // deduces value_type = float const&
+  template <auto const& ref>            // by-reference overload
+  constexpr staticmeta<ref> makestatic()  // (want best-match)
+    requires(                              // enable if:
+              ! requires{makestatic<ref>;}  // value overload fails
+              || is_function_v<typeof(ref)> // or if function type
+              || is_array_v<typeof(ref)>    // or if array type
+            );
 ```
+
+Only function overloads can do this tailored deduction of value category
+by considering each potential parameter match independently.
+
+The '`val`' overload accepts via `auto`
+while the '`ref`' overload accepts via `auto const&`
+and is enabled if the '`val`' overload fails,
+or if the referenced type is an array or function type...
+
+...in which case ... for static arrays and functions ...
+the overloads are ambiguous because
+the '`val`' overload accepts them by decay-copy.
+If the ambiguity is resolved in favour of the '`ref`' overload
+then decay is avoided, with arrays and functions binding by reference.
+
+To prioritize the '`ref`' overload,
+without adding a user-provided argument,
+a variadic deduced type pack is added to the '`val`' overload,
+making it a worse match
+(on MSVC this technique currently only works
+exactly for the array-or-function edge case for which it is needed here):
+
+```c++
+  template <auto val, typename...W>     // by-value overload 
+  constexpr staticmeta<val> makestatic(W...); // Worse-match
+```
+
+The effect is that the first overload accepts any
+constexpr value of structural type,
+even lvalues that would reference-bind to `decltype(auto)`,
+while the second accepts the rejects
+(static objects of non-constexpr value or of non-structural value type)
+as well as static arrays and functions.
+
+</details>
+
+<details><summary>
+Downsides of 'doubled up' deduction.
+</summary>
+
+The 'doubled up' deduction can't be aliased;
+only macros can 'forward' an argument to the overload set.
+For instance, to extract the type:
+
+```c++
+  #define METASTATIC(X) decltype(makestatic<X>())
+```
+
+The 'doubled up' deduction
+doubles the number of overloads required
+for any additional parameters
+and complicates overload resolution.
+The technique is practially limited to small numbers of parameters.
+
+</details>
+
+<details><summary>
+Users should write maker functions
+specific to the constraints of their use cases.
+</summary>
+
+Due to the impossibility of 'forwarding' double-deduction,
+this library can't abstract away the overload mechanics
+with generic helpers
+(without resorting to macros for code generation).
+The library-provided maker functions are 'templates' to follow.
+The library concepts and documentation are intended to help.
+More examples from usage experience will be added in time.
+
+</details>
+
+#
+##
+
+### Metadata access
+
+**`metasize`**`()`, **`metaget`**`()`
+
+Common accessors for metadata `x...` in any meta parameter type
+`Q` $=$ `staticmeta`, `dynameta` or `typemeta`,
+implemented as static member functions:
+
+* `Q::`**`metasize`**`()` $\rightarrow$ `sizeof...(x)`
+
+* `Q::`**`metaget`**`()` $\rightarrow$ `staticmeta<x...>`  
+  `Q::`**`metaget`**`<I...>()` $\rightarrow$ `staticmeta<xI...>`  
+
+where `xI` is the `I`th `x...` value.
+If there's no metadata `metaget` emits a static_assert message.
+Note that single-index `metaget<I>()` returns `staticmeta<xI>`,
+*wrapped*, same as for multi-indices.
+
+In principle, there's no need for in-class 'intrusive'
+access functions, but a minimal static API is convenient
+(and currently neccessary for Clang support).
+
+The metadata API is controlled by preprocessor expansion;
+it can be disabled or switched without editing "`parameta.hpp`".
+
+--------------
+
+# Example usage
+
+## Generic array data type
+
+Consider a generic array type, `ray`, in which the array Extent
+is parameterized by a meta value type, required to be of `integral` type,
+and its data Storage by a type parameter,
+constrained to have array-like access via the subscript operator`[]`:
+
+```c++
+  template <typename Storage, metavalue Extent>
+            requires (integral<typename Extent::value_type>
+         && requires (Storage a) {a[0];})
+  struct ray {
+    [[no_unique_address]] Storage data;
+    [[no_unique_address]] Extent extent;
+  };
+```
+
+The
+[`[[no_unique_address]]`](https://en.cppreference.com/w/cpp/language/attributes/no_unique_address)
+annotation ensures that
+empty member types occupy no storage.
+
+### Static array
+
+Parametrize with a C array member and a `metaconst` extent:
+
+```c++
+template <typename T, int N> using array = ray<T[N], CONST(N)>;
+
+  array<int,2>  i2 {{4,2}}; // ray<int[2],metastatic<2>>
+  array<char,4> c4 {"str"}; // ray<char[4],metastatic<4>>
+
+static_assert( sizeof c4 == 4 && c4.extent == 4 );
+```
+
+Like `std::array`, storage is in-class 'intrinsic',
+and there's no size overhead for holding
+the `extent` as a trailing data member
+as it's an empty class type.
+
+### Dynamic span
+
+Parametrize as a 'dynamic span' type
+with 'extrinsic' data of dynamic size
+with data Storage type `P` that
+should be constrained to satisfy pointer traits.
+
+```c++
+template <typename P> using span = ray<P,dynameta<int>>;
+
+  char buffer[4];
+  span<char*> ps{buffer,{4}};
+```
+
+This is a 'pointer and size' aggregate,
+in which the size is accessed as a metavalue member `extent`.
+The buffer ownership can be 'injected'
+by parametrizing with a `unique_ptr`:
+
+```c++
+  span<unique_ptr<char[]>> up{make_unique<char[]>(4),{4}};
+```
+
+### Static span
+
+Parametrizing Extent as `metaconst` saves size,
+and parametrizing Storage as a `metastatic` reference
+to a static buffer shrinks the class size to the minimum:
+
+```c++
+  ray<char(&)[4], staticmeta<4>> sp{buffer};
+
+  ray<staticmeta<buffer>, staticmeta<4>> sb{};
+```
+
+Here's a summary of the layouts and resulting sizes:
+
+```c++
+static_assert( sizeof ps == 16 ); // pointer 8 + size 4 (4 byte pad)
+static_assert( sizeof up == 16 ); // unique_ptr 8 + int (4 byte pad)
+static_assert( sizeof sp == 8 );  // pointer 8 + static size 0
+static_assert( sizeof c4 == 4 );  // array char[4] + static size 0
+static_assert( sizeof sb == 1 );  // static ref 0 + static size 0
+```
+
+### Discussion
+
+ToDo: Discuss API design beyond basic layout parameterization.
+Compare with `std::mdspan` API.
+Add a number system representation example.
+
+--------------
+
+# Appendices
+
+## Platform notes
+
+Requires a recent compiler
+
+* `g++10 -std=c++20` and up  
+`g++9 -std=c++2a -fconcepts`  
+`g++9 -std=c++17` and up
+* `clang++12 -std=c++20` and up  
+`clang++12 -std=c++17` and up
+* `cl /std:c++20` v19.30 up  
+`cl /std:c++17` v19.26 up  
+
+The library is experimental
+but intended to be production ready.
+It builds on C++17 NTTP placeholder parameters,
+generic `decltype(auto)` in particular.
+The C++17 support is natural and allows API compatibility,
+without C++20 extended NTTPs and concepts.
+`std` library `<concepts>` are not used.
+
+Some c++23 features are used, conditionally.
+This will cause warnings when compiled `c++20` mode.
+To supress the warnings on gcc and clang use `-Wno-c++2b-extensions`.
+
+MSVC v19.34 has issues with non-type template parameter
+value category deduction.
+Macros can be used to help keep code portable,
+see the `#define`'s in the library headers.
+
+Clang 15 does not yet implement some C++20 updates to NTTPs;
+it doens't yet admit floating point values,
+subobject lvalues,
+or direct braced initialization syntax
+(e.g. for aggregate CTAD).
+
+Clang bug
+[template decltype(auto) substitution failure](https://github.com/llvm/llvm-project/issues/58682)
+necessitates an intrusive in-class API for metadata access,
+i.e. `metasize` and `metaget` had to be made
+static member functions for clang
+(hidden friends also work).
+For this reason the access API is made removable or configurable.
+
+#
+
+## Array and function values
+
+Array and function value types are incompatible as meta value
+types.
+
+Static arrays and functions are best handled by reference,
+to retain value-like semantics.
+'Doubled up' deduction of
+'maker' function overloads helps
+by protecting against decay
+(template `<decltype(auto)>` placeholder parameters
+actually perform `<auto>` decay-copy).
+
+Array decay loses extent information,
+changes value category from lvalue to rvalue
+and breaks the `metaconst` concept
+(the pointer value is checked rather than the pointed-to value).
+
+Array classes like `std::array`
+with proper value semantics are generally a better choice.
+
+### Array `value_type`
+
+<details><summary>Array value types should generally be avoided...</summary>
+
+...at least until C++ makes array a regular type.  
+Skip this section unless you're an irregular type.
+
+Array value type is forbidden as a function return type.  
+The `metavalue` access functions are required
+to return by value type.  
+Therefore, meta value types cannot be instantiated with array value type:
+
+```c++
+  using char2 = dynameta<char[2]>; // OK to alias, uninstantiated
+  char2 X;      // FAIL instantiation
+  dynameta{"X"} // FAIL instantiation of deduced dynameta<char[2]>
+```
+
+(The `dynameta` deduction guide could be modified
+to accept array by-reference, or by-pointer with decay,
+but that hack would preclude by-value array working in
+some future C++ with a language fix.)
+
+Note that `dynameta` has no explicit constraint on its `value_type`
+so the class _type_ can 'carry' an array value type, `dynameta<T[N]>`,
+as long as it's never instantiated itself.
+
+On the other hand, `staticmeta` shouldn't accept array value arguments *at all*.
+Array types are not classed as structural types so a `decltype(auto)`-
+deduced array value type *should* cause an instantiation failure.
+Here, though, it appears to work:
+
+```c++
+  static constexpr char dk[] = "decay";
+
+  decltype(auto) nodk = dk; // Reject; deduced as const char[6]
+                            // then error: array initializer
+
+  staticmeta<dk> // Accept !! (via ADJUSTMENT and DECAY-COPY)
+                 // as const char* value_type, not char[6]
+```
+
+What happens here is an unfortunate series of events;
+you are advised to look away.
+The semantics of `decltype(auto)` is silently reversed to mean `auto`.
+
+`staticmeta<dk>` deduces array value type `const char[6]`
+via its template `decltype(auto)` placeholder parameter.
+Next, the array type is silently 'adjusted' to pointer type `const char*`
+(see below).
+This then forces decay on the initializing array argument value.
+The pointer value is then accepted because it's a static object id.
+
+This ancient C rule, 'adjustment' of formal function parameters
+of array type to pointer, is seen as
+[C's Biggest Mistake](https://digitalmars.com/articles/C-biggest-mistake.html).
+Here it is perpetuated in an entirely modern C++ context
+of generic template parameters.
+
+All direct attempts to use a string-literal fail
+(sadly, as a much requested use case):
+
+```c++
+  staticmeta<"X">  // FAIL; string literal NTTP reference forbidden
+  staticmeta<&"X"> // FAIL; string literal NTTP pointer forbidden
+  using chars = char[];
+  staticmeta<chars{"X"}> // FAIL; not a static object lvalue
+```
+
+In short...
+
+</details>
+
+* Meta value types of C array value type can't be instantiated.
+* Static meta value types can't be formed with C array value type.
+
+...this generic library strives to support array,
+even if an awkward type.
+
+### Function `value_type`
+
+Functions have non-value type, so are totally no-go by-value.  
+(Arrays have value type, albeit irregular non-copyable.)  
+Despite this, functions are fairly easy to work with.  
+<details><summary>Functions kind of work...</summary>
+
+Using `std::puts` from `<cstdio>` as an example:
+
+```c++
+  dynameta<int(&)(const char*)>{puts}("Hi"); // Explicit reference
+  dynameta{puts}; // The same; function-specific CTAD -> reference
+  dynameta{&puts}("Bye"); // & takes address for CTAD -> pointer 
+
+  staticmeta<(puts)>{}("Hello, world!"); // Static function reference
+  staticmeta<&puts>{}("Goodbye."); // & -> static function pointer
+  staticmeta<puts>{}("Goodbye, null world?"); // Silent decay to ptr
+```
+
+(Note that it's undefined behavior to refer to
+functions defined in the `std` library.)
+
+The captured function can be called directly
+because the implicit conversion operator
+returns the function reference or pointer.
+However, for functions taking no parameters
+the empty parens will invoke the call `operator()` instead
+so generic code shouldn't rely on implicit conversion.
+
+As explained in the previous section on array value type,
+the last line above should fail but instead silently decays the
+argument to a pointer, so defeating the purpose of `decltype(auto)`.
+
+</details>
+
+Function pointer decay is not as problematic as array decay,
+as no information is lost,
+but retaining a reference is best
+as pointer nullability necessitates null-checks before use.
+
+Function objects are usually more appropriate;
+consider them as well, or instead.
+
+--------------

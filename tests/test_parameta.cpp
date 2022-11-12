@@ -1,324 +1,343 @@
-#include <utility> // as_const
+#include "parameta_traits.hpp"
 
-#include "parameta.hpp"
+// MSVC decltype-related divergences. typeof is C23, possible C++26
+#ifdef _MSC_VER
+#  define typeof(...)std::remove_reference_t<decltype(__VA_ARGS__)>
+#  define MSVC_AS_CONST std::as_const
+#  define MSVCONST(...) std::as_const(__VA_ARGS__)
+#  define MSVC_DPAREN(...)(__VA_ARGS__)
+#else
+#  define typeof(...)__typeof(__VA_ARGS__)
+#  define MSVC_AS_CONST
+#  define MSVCONST(...)__VA_ARGS__
+#  define MSVC_DPAREN(...)__VA_ARGS__
+#endif
+
+#define SAME std::is_same_v
+
+#define REMOVE_REF_T(...) std::remove_reference_t<__VA_ARGS__>
+#if __cpp_lib_remove_cvref
+#define REMOVE_CVREF_T(...) std::remove_cvref_t<__VA_ARGS__>
+#else
+#define REMOVE_CVREF_T(...) std::remove_cv_t<REMOVE_REF_T(__VA_ARGS__)>
+#endif
+
+template <typename T>
+struct typex { using type = T; };
+
+template <typename T> auto make_unsigned();
+
+template <typename T> using make_unsigned_t = typename decltype(
+                            make_unsigned<REMOVE_REF_T(T)>())::type;
+
+template <typename T> auto make_unsigned()
+{
+  if constexpr (! std::is_reference_v<T>) {
+    if constexpr (std::is_integral_v<T>)
+      return std::make_unsigned<T>{};
+    else
+      return typex<T>{};
+  } else {
+    using U = make_unsigned_t<T>;
+    if constexpr (std::is_lvalue_reference_v<T>)
+      return std::add_lvalue_reference<U>{};
+    else
+      return std::add_rvalue_reference<U>{};
+  }
+}
+template <decltype(auto) v>
+constexpr inline decltype(auto) make_unsigned_v
+                              = make_unsigned_t<decltype(v)>{v};
 
 using namespace LML_NAMESPACE_ID;
 
-#if __cpp_concepts
-template <typename T> using is_structural_functor_value
-    = std::bool_constant<impl::structural_functor_value<T{}>>;
+// Test parameta_traits concepts and/or corresponding C++17 traits
 
-template <typename T> using is_auto_structural_functor_value
-    = std::bool_constant<impl::auto_structural_functor_value<T{}>>;
+#if __cpp_concepts
+#  define METAVALUE(...) (metavalue<__VA_ARGS__> \
+                    && is_metavalue_v<__VA_ARGS__>)
+#  define METASTATIC(...)(metastatic<__VA_ARGS__> \
+                    && is_metastatic_v<__VA_ARGS__>)
+#  define METACONST(...) (metaconst<__VA_ARGS__> \
+                    && is_metaconst_v<__VA_ARGS__>)
+#  define METATYPE(...)  (metatype<__VA_ARGS__> \
+                    && is_metatype_v<__VA_ARGS__>)
+#  define METAPARA(...)  (metapara<__VA_ARGS__> \
+                    && is_metapara_v<__VA_ARGS__>)
 #else
-using impl::structural_functor_value;
-using impl::auto_structural_functor_value;
+#  define METAVALUE(...) is_metavalue_v<__VA_ARGS__>
+#  define METASTATIC(...) is_metastatic_v<__VA_ARGS__>
+#  define METACONST(...) is_metaconst_v<__VA_ARGS__>
+#  define METATYPE(...) is_metatype_v<__VA_ARGS__>
+#  define METAPARA(...) is_metapara_v<__VA_ARGS__>
 #endif
 
-// Code from readme.md
-#if __cpp_concepts
-  //  metavalue auto value0 = 0;         // FAIL: 0 is not a metavalue
-      metavalue auto value1 = dynameta{1};
-      metavalue auto value2 = parameta<2>{};
-
-  //  metavalue<char> auto nchar = parameta<0x0>{}; // FAIL: 0 is not a char
-      metavalue<char> auto char0 = parameta<'0'>{};
-      metavalue<char> auto stdval = std::integral_constant<char,0>{};
-
-  //  metastatic auto wrong = dynameta{4};   // FAIL: dynameta is not metastatic
-      metastatic auto right = pv<5>;
-      const float flo[4][4]{};
-      metastatic<float[4][4]> auto floref = pv<(flo)>; // refers to global var flo
-
-  //  cptype<float> auto floref = parameta<(flo)>{}; // FAIL: flo not constexpr
-#if not defined(__clang__)
-      metaconst auto pi = parameta<3.14159f>{};
-#endif
-
-static_assert(&floref()==&flo);
-// end code from readme
-
-// Pass metavalue by-value, can't use arg as constexpr in function!
-constexpr auto sz = [](metavalue auto v) {
-      constexpr
-      auto s = size(decltype(v){}); // size(v) is not constexpr
-      return s;
-    }(dynameta{1});
-static_assert( sz == 1 );
-
-metatype auto tint = ty<int>;
-metatype auto Tint = typemeta<int>{};
-#endif
-
-static_assert( xtra<0>(ty<int,1>) == 1 );
-
-// type
-
-#if __cpp_concepts
-#else
-template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool metatype = is_typ_v<T,U>;
-template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool metavalue = is_val_v<T,U>;
-template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool metastatic = is_s_val_v<T,U>;
-template <typename T, typename U = remove_cvref_t<impl::functor_value_type_or_void<T>>> inline constexpr bool metaconst = is_ps_val_v<T,U>;
-#endif
+/****** METATYPE *********/
+// Test metatype concept
 
 struct empty {};
-struct trait : std::true_type {};
-struct bc { using type = std::true_type; };
+struct voidt {using type = void;};
+struct ftorm : voidt {void operator()(){};};
+struct ftorc : voidt {void operator()()const{};};
 
-static_assert( ! metatype<empty> );
-static_assert(   metatype<typemeta<int>> );
-static_assert( ! metatype<type_t<typemeta<int>>> );
-static_assert(   metatype<std::add_lvalue_reference<int>> );
+static_assert( ! METATYPE(empty) &&  ! METAPARA(empty) );
+static_assert(   METATYPE(voidt) &&    METAPARA(voidt) );
+static_assert(   METATYPE(ftorm) &&    METAPARA(ftorm) );
+static_assert( ! METATYPE(ftorc) &&  ! METAPARA(ftorc) );
 
-static_assert( ! metatype<std::true_type> );
-static_assert( ! metatype<std::integral_constant<int,1>> );
-static_assert( std::is_same_v<impl::functor_return_or_fail<trait>,bool> );
-static_assert( /*! metatype<trait>*/ impl::is_value_functor_v<trait> );
-static_assert(   metatype<bc> );
+static_assert(   METATYPE(std::add_lvalue_reference<int>) );
+static_assert( ! METATYPE(std::true_type) );
 
-typemeta<int> Tt = ty<int>;
-static_assert( std::is_same_v< int, type_t<typemeta<int>> > );
-static_assert( std::is_same_v< int, typemeta<int>::type > );
+/****** META VALUE std **********/
+// Test meta value concepts on std types
 
-// metavalue
+static_assert( METAVALUE (std::true_type) );
+static_assert( METASTATIC(std::true_type) );
+static_assert( METACONST (std::true_type) );
 
-struct arg7 { using value_type = int; int value; int operator()()const;                 };
-struct argb { using value_type = int; int value;                        operator int(); };
-struct argd { using value_type = int;            int operator()()const; operator int(); };
-struct arge {                         int value; int operator()()const; operator int(); };
-struct argf { using value_type = int; int value; int operator()()const; operator int(); };
+static_assert( METAVALUE (std::true_type, bool) );
 
-static_assert( ! metavalue<arg7> );
-static_assert( ! metavalue<argb> );
-static_assert( ! metavalue<argd> );
-static_assert( ! metavalue<arge> );
-static_assert(   metavalue<argf> );
+int global;
 
-static_assert( metavalue<std::true_type> );
-static_assert( metastatic<std::true_type> );
-static_assert( metaconst<std::true_type> );
+static_assert(  METAVALUE (std::integral_constant<int&, global>) );
+static_assert(  METASTATIC(std::integral_constant<int&, global>) );
+static_assert( ! METACONST(std::integral_constant<int&, global>) );
 
-int ref;
-
-static_assert( metavalue<std::integral_constant<int&, ref>> );
-static_assert( metastatic<std::integral_constant<int&, ref>> );
-static_assert( ! metaconst<std::integral_constant<int&, ref>> );
-
-[[maybe_unused]] auto one = []{return 1;};
-static_assert( ! metavalue<decltype(one)> );
-
-// metastatic
-
-static_assert( ! metastatic<argf> );
-
-using VT = int const&;
-struct pd { using value_type = VT; inline static VT value{ref};           VT operator()()const{return value;}; operator VT(); };
-struct pe { using value_type = VT;               VT value{ref}; constexpr VT operator()()const{return value;}; operator VT(); };
-struct pf { using value_type = VT; inline static VT value{ref}; constexpr VT operator()()     {return value;}; operator VT(); };
-struct pg { using value_type = VT; inline static VT value{ref}; constexpr VT operator()()const{return value;}; operator VT(); };
-
-static_assert( ! metastatic<pd> );
-static_assert( ! metastatic<pe> );
-static_assert( ! metastatic<pf> );
-static_assert(   metastatic<pg> );
-
-// metaconst
-
-static_assert( ! metaconst<pg> );
-
-struct cd { using value_type = int; static const int value{};           int operator()(){return value;}; operator int(); };
-struct ce { using value_type = int; static       int value;             int operator()(){return value;}; operator int(); };
-struct cf { using value_type = int; static const int value{}; constexpr int operator()()const{return value;}; operator int(); };
-
-static_assert( ! metaconst<cd> );
-static_assert( ! metaconst<ce> );
-static_assert(   metaconst<cf> );
-
-
-// parameta
-
-int const global_int_const = 1;
-using global_by_ref = parameta<(global_int_const)>;
-
-static_assert( is_auto_structural_functor_value< global_by_ref>() ); // by id
-static_assert( metaconst<global_by_ref> ); // by id
-static_assert( size(global_by_ref{}) == 1 );
-
-auto ft() {
-
-static int const int_const = 1;
-struct ic { constexpr int operator()()const{ return int_const; }};
-static_assert( impl::auto_structural_or_fail<ic{}()> );
-static_assert( is_auto_structural_functor_value<ic>() ); // value
-
-static int /*const*/ non_const = 1;
-struct nc { int operator()()const{ return non_const; }};
-static_assert( ! is_auto_structural_functor_value<nc>() ); // value
-struct ncref { constexpr int& operator()()const{ return non_const; }};
-static_assert( ! is_auto_structural_functor_value<ncref>() ); // id
-struct staticlocal { int const& operator()()const{static constexpr int i = 1; return i;} };
-static_assert( ! is_auto_structural_functor_value<staticlocal>() );
-
-using param_by_value = parameta<int_const>;
-static_assert( is_auto_structural_functor_value< param_by_value >() ); // by value
-static_assert( metaconst<param_by_value> ); // by value
-
-//auto param_by_ref = parameta<std::as_const(int_const)>{};
-using param_by_ref = parameta<static_cast<int const&>(int_const)>;
-#ifndef _MSC_VER  // MSVC thinks this is not a constant expression
-static_assert( is_auto_structural_functor_value< param_by_ref>() ); // by id
-static_assert( metaconst<param_by_ref> ); // by id
-#endif
-
-//auto param_mutable = parameta<non_const>{}; // not valid by value
-using param_mutable_id = parameta<std::as_const(non_const)>; // ok by id, but
-static_assert( ! is_auto_structural_functor_value< param_mutable_id>() ); // not constexpr
-static_assert( ! metaconst<param_mutable_id> ); // not constexpr
-
-static_assert( metastatic<parameta<true>,bool> );
-static_assert( metastatic<parameta<false>,bool> );
-static_assert( ! metastatic<parameta<false>,int> );
+static_assert(  METAVALUE (std::integral_constant<int&, global>, int) );
 
 #if __cpp_concepts
-metastatic<bool> auto pbool = parameta<true>{};
-constexpr metastatic<int> auto pint = param_by_ref{};
+template <metatype t, metavalue<int> n> struct meta_array;
 
-return pbool + pint;
+metavalue auto any_value_type = std::integral_constant<int,42>{}; // ok
+metavalue<char> auto charchar = std::integral_constant<char,42>{}; // ok
+//metavalue<char> auto mismatch = std::integral_constant<int,42>{}; // FAIL
 #endif
-return 1;
-}
 
+/****** METAVALUE *********/
+//      metavalue<T,V>
 
-#if __cpp_concepts
-template <argf> struct Argf : parameta<true> {};
-#if not defined(__clang__)
-Argf<{1}> argf_cnttp;
+template <typename VT> struct test_metavalue {
+
+using UT = make_unsigned_t<VT>;
+
+#define VALUE_TYPE using value_type = VT;
+#define VALUE VT value;
+#define CALL_OPC VT operator()()const;
+#define IMPLCONV operator VT()const;
+
+#define VALUu    UT value;
+#define CALL_OPm VT operator()();
+#define CALL_OPu UT operator()()const;
+#define IMPLCONm operator VT();
+#define ExPLCONV explicit operator VT()const;
+#define IMPLCONu operator UT()const;
+
+struct TVCo {VALUE_TYPE VALUE CALL_OPC         }; // Missing conv-op
+struct TVoI {VALUE_TYPE VALUE          IMPLCONV}; // Missing call-op
+struct ToCI {VALUE_TYPE       CALL_OPC IMPLCONV}; // Missing value
+struct oVCI {           VALUE CALL_OPC IMPLCONV}; // Missing value_type
+
+struct TVCI {VALUE_TYPE VALUE CALL_OPC IMPLCONV}; // Full house
+
+struct TuCI {VALUE_TYPE VALUu CALL_OPC IMPLCONV}; // value wrong type
+struct TVmI {VALUE_TYPE VALUE CALL_OPm IMPLCONV}; // call-op non-const
+struct TVuI {VALUE_TYPE VALUE CALL_OPu IMPLCONV}; // call-op wrong type
+struct TVCm {VALUE_TYPE VALUE CALL_OPC IMPLCONm}; // conv-op non-const
+struct TVCx {VALUE_TYPE VALUE CALL_OPC ExPLCONV}; // conv-op explicit
+struct TVCu {VALUE_TYPE VALUE CALL_OPC IMPLCONu}; // conv-op wrong type
+
+#undef VALUE_TYPE
+#undef VALUE
+#undef CALL_OPC
+#undef IMPLCONV
+
+#undef VALUu
+#undef CALL_OPm
+#undef CALL_OPu
+#undef IMPLCONm
+#undef ExPLCONV
+#undef IMPLCONu
+
+static_assert( ! METAVALUE(TVCo) ); // Missing conv-op
+static_assert( ! METAVALUE(TVoI) ); // Missing call-op
+static_assert( ! METAVALUE(ToCI) ); // Missing value
+static_assert( ! METAVALUE(oVCI) ); // Missing value_type
+
+static_assert(   METAVALUE(TVCI) ); // Full house
+
+static_assert( ! METAVALUE(TuCI) ); // value wrong type
+static_assert( ! METAVALUE(TVmI) ); // call-op non-const
+static_assert( ! METAVALUE(TVuI) ); // call-op wrong type
+static_assert( ! METAVALUE(TVCm) ); // conv-op non-const
+static_assert( ! METAVALUE(TVCx) ); // conv-op explicit
+static_assert(   METAVALUE(TVCu) == std::is_convertible_v<TVCu,VT>);
+
+static_assert( ! METASTATIC(TVCI) );
+static_assert( ! METACONST (TVCI) );
+
+}; // struct test_metavalue
+
+test_metavalue<int>        metavalue_int;
+test_metavalue<int&>       metavalue_intref;
+test_metavalue<int const>  metavalue_intc;
+test_metavalue<int&&>      metavalue_intrefref;
+test_metavalue<int const&> metavalue_intcref;
+
+/**** METASTATIC ******* METACONST ******/
+//    metastatic<T,V> &  metaconst<T,V>
+
+template <decltype(auto) v,
+          bool ConstExpr = true> struct test_metastatic {
+
+using VT = decltype(v);
+//static constexpr decltype(auto) u = make_unsigned_v<v>;
+
+#define VALUE_TYPE using value_type = VT;
+#define VALUE inline static VT value = v;
+#define CALL_OPC VT operator()()const{return value;}
+#define IMPLCONV operator VT()const;
+// note implicit conversion is not required to be constexpr (should it?)
+
+#define VALUe VT value = v;
+
+struct TVcI {VALUE_TYPE constexpr VALUE           CALL_OPC IMPLCONV};
+struct TvCI {VALUE_TYPE           VALUe constexpr CALL_OPC IMPLCONV};
+struct TVCI {VALUE_TYPE constexpr VALUE constexpr CALL_OPC IMPLCONV};
+
+static_assert( ! METASTATIC(TVcI) );
+static_assert( ! METASTATIC(TvCI) );
+static_assert(   METASTATIC(TVCI) );
+
+static_assert( ! METACONST(TVcI) );
+static_assert( ! METACONST(TvCI) );
+static_assert(   METACONST(TVCI) == ConstExpr );
+
+}; // struct test_metastatic
+
+#include <utility> // as_const
+
+constexpr int constant{};
+
+[[maybe_unused]] test_metastatic<constant>   metastatic_int;
+[[maybe_unused]] test_metastatic<(constant)> metastatic_intcref;
+
+[[maybe_unused]] test_metastatic<(global), false> metastatic_intref;
+
+constexpr void function()noexcept{}
+
+[[maybe_unused]]
+#ifndef _MSC_VER
+test_metastatic<(function)>
 #else
-Argf<argf{1}> argf_cnttp;
+test_metastatic<static_cast<void(&)()noexcept>(function)>
 #endif
+metastatic_function;
 
-metaconst<bool> auto True = std::true_type{};
-metaconst<bool> auto False = std::false_type{};
-static_assert( True && ! False );
-constexpr auto tk = []<metaconst<bool>>(){return true;}.template operator()<std::true_type>();
-static_assert(tk);
-#endif
 
-// xtras
+#include "parameta.hpp"
 
-static_assert(std::is_same_v<int, decltype(get<1>(parameta<0,1,2,3>{}))> );
-int glober=0;
-constexpr int const& conster(int& a){return a;}
-static_assert(std::is_same_v<int const&, decltype(get<1>(parameta<0,(int const&)(glober),2,3>{}))> );
+// dynameta<void> can be named but not instantiated
+using voidmeta = dynameta<void>;
 
-auto p0123 = parameta<0,1,2,3>{};
+static_assert( ! METAVALUE(void) );
 
-static_assert( get<0>(p0123) == 0 );
-static_assert( get<1>(p0123) == 1 );
-static_assert( get<2>(p0123) == 2 );
-static_assert( get<3>(p0123) == 3 );
+using MSF = decltype(makestatic<function>());
+using SF = staticmeta<std::as_const(function)>;
 
-static_assert( xtra<0>(p0123) == 1 );
-static_assert( xtra<1>(p0123) == 2 );
-static_assert( xtra<2>(p0123) == 3 );
+static_assert( SAME<SF,MSF> );
+static_assert( METACONST( SF, void()noexcept) );
 
-constexpr
+static_assert( METACONST( staticmeta<true>, bool) );
+static_assert( METACONST( staticmeta<false>,bool) );
+
+constexpr int i = 42;
+static float a[2] = {};
+void func(){}
+
+static_assert( ! std::is_reference_v<decltype(makestatic<42>()())> );
+static_assert( ! std::is_reference_v<decltype(makestatic<i>()())> );
+static_assert( ! std::is_reference_v<decltype(makestatic<(i)>()())> );
+static_assert(   std::is_reference_v<decltype(makestatic<a>()())> );
+static_assert(   std::is_reference_v<decltype(makestatic<func>()())> );
+
+
+static_assert( staticmeta<0,1,2,3>::metaget<0>() == 1 );
+static_assert( SAME<decltype(staticmeta<0,1,2,3>::metaget())
+                             , staticmeta<1,2,3>> );
+static_assert( SAME<decltype(staticmeta<0,1,2,3>::metaget<2,1,0>())
+                             , staticmeta<3,2,1>> );
+
+auto p0123 = staticmeta<0,1,2,3>{};
+
+static_assert( p0123.metasize() == 3 );
+static_assert( p0123 == 0 );
+static_assert( p0123.metaget() == 1 );
+static_assert( p0123.metaget().metaget() == 2 );
+static_assert( p0123.metaget().metaget().metaget() == 3 );
+static_assert( p0123.metaget<0>() == 1 &&  p0123.metaget<-3>() == 1 );
+static_assert( p0123.metaget<1>() == 2 &&  p0123.metaget<-2>() == 2 );
+static_assert( p0123.metaget<2>() == 3 &&  p0123.metaget<-1>() == 3 );
+
 auto d0123 = dynameta<int,1,2,3>{};
 
-static_assert( get<0>(dynameta<int,1,2,3>{0}) == 0 );
-static_assert( get<0>(d0123) == 0 );
-static_assert( get<1>(dynameta<int,1,2,3>{}) == 1 );
-static_assert( get<2>(dynameta<int,1,2,3>{}) == 2 );
-static_assert( get<3>(dynameta<int,1,2,3>{}) == 3 );
+static_assert( d0123.metasize() == 3 );
+static_assert( d0123.metaget() == 1 );
+static_assert( d0123.metaget<0>() == 1 && d0123.metaget<-3>() == 1 );
+static_assert( d0123.metaget<1>() == 2 && d0123.metaget<-2>() == 2 );
+static_assert( d0123.metaget<2>() == 3 && d0123.metaget<-1>() == 3 );
 
-#ifdef _MSC_VER
-#define NUA [[msvc::no_unique_address]]
-#else
-#define NUA [[no_unique_address]]
-#endif
+int main() {}
 
 #if __cpp_concepts
-template <typename elem, metavalue extentt>
-constexpr auto intrinsic_array_type()
-{
-  if constexpr (metaconst<extentt>)
-    return ty<elem[extentt::value]>;
-  else
-    return ty<elem[]>;
-};
-
-template <typename elem, metavalue extt>
-using intrinsic_array_t =
-      typename decltype(intrinsic_array_type<elem,extt>())::type;
-
-template <metatype elementt, metavalue extentt>
-struct array
-{
-  using array_t = intrinsic_array_t<type_t<elementt>, extentt>;
-
-  NUA extentt extent{};
-
-#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
-  NUA array_t data;
-#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
-
-  auto begin() {return data;}
-  auto end() {return data+extent;}
-};
-
-template <metatype elementt, metavalue extentt>
-struct span
-{
-  NUA elementt element_type{};
-  NUA extentt extent{};
-  type_t<elementt>* data;
-
-  auto begin() {return data;}
-  auto end() {return data+extent;}
-};
-#if defined(__clang__)
-template <metatype T, metavalue v>
-span(T,v, type_t<T>*) -> span<T,v>;
-#endif
-
-#include <cassert>
-#include <cstddef>
-#include <cstdio>
+#include <algorithm>
 #include <memory>
+using std::unique_ptr;
+using std::make_unique;
+using std::integral;
+
+#ifndef _MSC_VER
+# define NUA [[no_unique_address]]
+#else
+# define NUA [[msvc::no_unique_address]]
 #endif
 
-int main()
-{
-#if __cpp_concepts
-  //std::array<int,4> a4;
-  array< typemeta<int>, parameta<4> > int4;
+  template <typename Storage, metavalue Extent>
+            requires (integral<typename Extent::value_type>
+         && requires (Storage a) {a[0];})
+  struct ray {
+    NUA Storage data;
+    NUA Extent extent{};
+  };
 
-  unsigned char storage[16*sizeof(int)];
+template <typename T, int N> using array = ray<T[N], staticmeta<N>>;
 
-  using ints = array< typemeta<int>, dynameta<int> >;
-  constexpr auto ints_data = offsetof(ints,data);
+  array<int,2>  i2 {{4,2}}; // ray<int[2],metastatic<2>>
+  array<char,4> c4 {"str"}; // ray<char[4],metastatic<4>>
 
-#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
-  auto pint = reinterpret_cast<ints*>(new (storage) int{4});
-#include "ALLOW_ZERO_SIZE_ARRAY.hpp"
+static_assert( sizeof c4 == 4 && c4.extent == 4 );
 
-  assert( pint->begin() == pint->data );
+template <typename P> using span = ray<P,dynameta<int>>;
 
-  for (int i=0; auto& e : int4) e = i++;
-  for (int i=0; auto& e : *pint) e = i++;
-  for (int i=0; i != 4; ++i)
-    if (*(int4.begin()+i) != i
-     || *reinterpret_cast<int*>(&storage[ints_data + i*sizeof(int)]) != i )
-       assert(false);
+  char buffer[4];
+  span<char*> eh{buffer,{4}};
 
-  static_assert( int4.extent == 4 );
-  static_assert( sizeof int4 == sizeof(int) * 4 );
-  static_assert( sizeof(ints) == sizeof(int) );
+  span<unique_ptr<char[]>> up{make_unique<char[]>(4),{4}};
 
-  span spint4{ty<int>, parameta<4>{}, int4.begin()};
-  span dpint4{ty<int>, dynameta<char>{4}, int4.begin()};
+  ray<char(&)[4], staticmeta<4>> sp{buffer};
 
-  return !(spint4.begin() == dpint4.begin());
-#endif
+  ray<staticmetacast<char(&)[4], buffer>, staticmeta<4>> sb{};
+
+static_assert( sizeof eh == 16 );
+static_assert( sizeof up == 16 );
+static_assert( sizeof sp == 8 );
+static_assert( sizeof c4 == 4 );
+static_assert( sizeof sb == 1 );
+
+void cp() {
+  std::ranges::copy_n("1234", eh.extent, &eh.data[0]);
+  std::ranges::copy_n("1234", up.extent, &up.data[0]);
+  std::ranges::copy_n("1234", sp.extent, &sp.data[0]);
+  std::ranges::copy_n("1234", c4.extent, &c4.data[0]);
+  std::ranges::copy_n("1234", sb.extent, &sb.data[0]);
 }
+#endif
