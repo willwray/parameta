@@ -3,7 +3,6 @@
 <details><summary>Copyright &copy; 2022 Lemurian Labs. Distributed under the Boost Software License, V1.0</summary>
 
 #
-##
 
 ### **Boost Software License** - Version 1.0 - August 17th, 2003
 
@@ -343,7 +342,6 @@ This library provides a [`staticmeta<v>`](#staticmeta) class template
 with a `staticmetacast<T,v>` explicit-typed alias
 that implements the full static API of `integral_constant`.
 
-#
 ##
 
 ### Value-type constraint
@@ -370,7 +368,6 @@ the value type to a concept such as `std::integral`.
 To do that, you have to define a new named concept,
 or use ad hoc constraints.
 
-#
 ##
 
 ### Levels of constraint
@@ -405,13 +402,13 @@ between each concept boundary.
 A `metavalue` type satisfies exactly one of:
 
 $$
-           !\, \sf{metastatic}\,\sf{metavalue}
-\text{ | } !\, \sf{metaconst}\,\sf{metastatic}
+           ! \sf{metastatic}\space\sf{ metavalue}
+\text{ | } ! \sf{metaconst}\space\sf{metastatic}
 \text{ | } \sf{metaconst }
 $$
 
 `metaconst` stands on its own as a compile-time constant value.  
-Non-`metaconst` types are collectively  "$\text{metadyn}$":
+Non-`metaconst` types are collectively called $\text{metadyn}$:
 
 $$
 \underbrace{ \text{metadyna}
@@ -591,31 +588,30 @@ The hierarchical concepts are sufficient.
 Climbing down the ladder of meta value concepts:
 
 * A **`metaconst`** type `c` represents a pure constexpr value, guaranteed.  
-e.g. `staticmeta<42>`, equivalent to `integral_constant<int,42>`.<br>
-<br>
+e.g. `staticmeta<42>`, equivalent to `integral_constant<int,42>`.
+
 The value is accessed by `c::value`, or `c{}.value`, or `c{}()`  
-or by implicit conversion,
-`typename c::value_type{c{}}`<br>
+or by implicit conversion, `typename c::value_type{c{}}`
 
 * A `metastatic` type represents either a constexpr value (above)  
-or refers to a static variable (the next paragraph below).  
-<br>
-A `metastatic` type that is not `metaconst` is a $\bold{metadynst}$ type.  
+or refers to a static variable (the next paragraph below).
+
+A `metastatic` type that is not `metaconst` is a $\mathbf{metadynst}$ type.  
 It refers to an object of static storage duration with value presumed  
 to be runtime-determined,
 i.e. dynamically initialized during static init.  
-e.g. `staticmeta<(s)>`, equivalent to `integral_constant<int&, s>`<br>
-<br>
+e.g. `staticmeta<(s)>`, equivalent to `integral_constant<int&,s>`
+
 The value of an instance `d` is accessed at runtime
 by `d()` or by `d.value`  
 or by implicit conversion.
-Use read-only access to ensure substitutability.<br>
-<br>
+Use read-only access to ensure substitutability.
+
 Non-`metaconst` types are $\text{metadyn}$.
 They are either static (above)  
 or non-static, i.e. automatic (the next paragraph below).  
-<br>
-A `metavalue` type that is not `metastatic` is a $\bold{metadyna}$ type.  
+
+A `metavalue` type that is not `metastatic` is a $\mathbf{metadyna}$ type.  
 It represents a runtime-determined value to be laid out
 in automatic storage  
 for dynamic initialization during a program run
@@ -664,7 +660,7 @@ along with helpers.
 * [Metadata access](#metadata-access)
 static member functions `metasize`, `metaget`
 
---------------
+#
 
 ## Type meta parameter
 
@@ -687,7 +683,7 @@ Equivalent to `std::type_identity`, with metadata,
 this type meta parameter is provided for completeness;
 value meta parameters, i.e. non-type meta parameters, are the focus here.
 
---------------
+#
 
 ## Value meta parameters
 
@@ -720,7 +716,6 @@ able to carry any `metastatic` value kind.
 
 Optional metadata `x...` is also admitted; `dynameta<T,x...>`, `staticmeta<v,x...>`
 
-#
 ##
 
 ### Meta value API
@@ -788,7 +783,6 @@ There's no `std` type wrapper equivalent to `dynameta`,
 a wrapped type substitutable in read-only use
 with statically constrained meta values.
 
-#
 ##
 
 ### `dynameta` deduction guide
@@ -847,7 +841,6 @@ for arrays - a forbidden return type.
 * Functions are deduced and initialized by reference,
 not by pointer.
 
-#
 ##
 
 ### Explicit type alias
@@ -938,7 +931,6 @@ The solution is to use template 'maker' function overloads...
 
 </details>
 
-#
 ##
 
 ### Maker functions
@@ -1132,7 +1124,6 @@ More examples from usage experience will be added in time.
 
 </details>
 
-#
 ##
 
 ### Metadata access
