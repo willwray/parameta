@@ -334,10 +334,10 @@ static_assert( sizeof c4 == 4 );
 static_assert( sizeof sb == 1 );
 
 void cp() {
-  std::ranges::copy_n("1234", eh.extent, &eh.data[0]);
-  std::ranges::copy_n("1234", up.extent, &up.data[0]);
-  std::ranges::copy_n("1234", sp.extent, &sp.data[0]);
-  std::ranges::copy_n("1234", c4.extent, &c4.data[0]);
-  std::ranges::copy_n("1234", sb.extent, &sb.data[0]);
+  std::copy_n("1234", eh.extent, &eh.data[0]);
+  std::copy_n("1234", up.extent, &up.data[0]);
+  std::copy_n("1234", sp.extent, &sp.data[0]);
+  std::copy_n("1234", c4.extent, &c4.data[0]);
+  std::copy_n("1234", sb.extent, &sb.data[0]);
 }
 #endif
