@@ -44,8 +44,8 @@ jobs:
             cc: "gcc-11", cxx: "g++-11"
           }
         - {
-            name: "Windows MSVC 2022 Rel (C++20)", artifact: "Windows-MSVC.tar.xz",
-            os: windows-2022,
+            name: "Windows MSVC 2019 Rel (C++20)", artifact: "Windows-MSVC.tar.xz",
+            os: windows-2019,
             compiler: msvc,
             build_type: RelWithDebInfo,
             cc: "cl", cxx: "cl",
