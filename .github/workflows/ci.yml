@@ -63,11 +63,8 @@ jobs:
         email: 'willwray@gmail.com'
         actor: 'willwray'
         token: '${{ secrets.RW_ORG_REPOS_PAT }}'
-    - uses: actions/checkout@v3
-      with:
-        repository: Lemurian-Labs/lml_namespace
-        ref: v1.0
-        path: subprojects/lml_namespace
+    - run: |
+        git clone https://github.com/Lemurian-Labs/lml_namespace/ subprojects/lml_namespace
     - uses: actions/setup-python@v3
       with:
         python-version: '3.x'
