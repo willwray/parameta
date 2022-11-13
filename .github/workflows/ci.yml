@@ -55,8 +55,14 @@ jobs:
     - uses: de-vri-es/setup-git-credentials@v2
       with:
         credentials: ${{secrets.GIT_CREDENTIALS}}
-    - uses: actions/checkout@v1
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
+    - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+      with:
+        name: 'will wray'
+        email: 'willwray@gmail.com'
+        actor: 'willwray'
+        token: '${{ secrets.RW_ORG_REPOS_PAT }}'
+    - uses: actions/checkout@v3
       with:
         repository: Lemurian-Labs/lml_namespace
         ref: v1.0
