@@ -52,16 +52,10 @@ jobs:
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat"
           }
     steps:
-    - uses: actions/checkout@v3
-    - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+    - uses: de-vri-es/setup-git-credentials@v2
       with:
-        global: true
-        name: 'will wray'
-        email: 'willwray@gmail.com'
-        actor: 'willwray'
-        token: '${{ secrets.RW_ORG_REPOS_PAT }}'
-    - run: |
-        git clone https://github.com/Lemurian-Labs/lml_namespace/ subprojects/lml_namespace
+        credentials: ${{secrets.GIT_CREDENTIALS}}
+    - uses: actions/checkout@v3
     - uses: actions/setup-python@v3
       with:
         python-version: '3.x'
