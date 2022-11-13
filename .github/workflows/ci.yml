@@ -53,10 +53,12 @@ jobs:
           }
     steps:
     - uses: actions/checkout@v3
+    - uses: de-vri-es/setup-git-credentials@v2
+      with:
+        credentials: ${{secrets.GIT_CREDENTIALS}}
     - uses: actions/checkout@v3
       with:
         repository: Lemurian-Labs/lml_namespace
-        token: ${{ secrets.RW_ORG_REPOS_PAT }}
         ref: v1.0
         path: subprojects/lml_namespace
     - uses: actions/setup-python@v3
