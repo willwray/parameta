@@ -56,7 +56,7 @@ jobs:
     - uses: de-vri-es/setup-git-credentials@v2
       with:
         credentials: ${{secrets.GIT_CREDENTIALS}}
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v1
       with:
         repository: Lemurian-Labs/lml_namespace
         token: ${{ secrets.RW_ORG_REPOS_PAT }}
