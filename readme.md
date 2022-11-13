@@ -44,6 +44,9 @@ Header-only C++ library. Targets C++20, limited C++17 backport support.
 Tested on recent GCC, Clang and MSVC;
 see [platform notes](#platform-notes) for portability.
 
+[![ci_meson](https://github.com/Lemurian-Labs/parameta/actions/workflows/ci.yml/badge.svg)](https://github.com/Lemurian-Labs/parameta/actions/workflows/ci.yml)
+Linux GCC-11, Clang-12 libstdc++, macos Clang-14 libc++
+
 ### Header files
 
 "[`parameta_traits.hpp`](#parameta_traitshpp)"
