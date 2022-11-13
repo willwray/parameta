@@ -27,8 +27,7 @@ jobs:
             os: ubuntu-22.04,
             compiler: gcc-11,
             build_type: RelWithDebInfo,
-            cc: "gcc-11", cxx: "g++-11",
-            version: ["c++17","c++20"]
+            cc: "gcc-11", cxx: "g++-11"
           }
 #        - {
 #            name: "Linux GCC-12 Rel (C++20)", artifact: "Linux.tar.xz",
@@ -43,16 +42,14 @@ jobs:
             os: ubuntu-22.04,
             compiler: clang-12,
             build_type: RelWithDebInfo,
-            cc: "clang-12", cxx: "clang++-12",
-            version: ["c++17","c++20"]
+            cc: "clang-12", cxx: "clang++-12"
           }
         - {
             name: "macOS Clang-14 Rel (C++20)", artifact: "macOS.tar.xz",
             os: macos-12,
             compiler: clang-14,
             build_type: RelWithDebInfo,
-            cc: "clang-14", cxx: "clang++-14",
-            version: ["c++17","c++20"]
+            cc: "clang-14", cxx: "clang++-14"
           }
 #        - {
 #            name: "Windows MSVC 2022 Rel (C++20)", artifact: "Windows-MSVC.tar.xz",
@@ -72,8 +69,13 @@ jobs:
         python-version: '3.x'
     - run: pip install meson ninja
     - uses: ilammy/msvc-dev-cmd@v1
-    - run: meson setup -Dcpp_std=${{ matrix.config.version }} ${{ matrix.config.compiler }}/
+    - run: meson setup ${{ matrix.config.compiler }}/
+      env:
+        CC: ${{ matrix.config.cc }},
+        CXX: ${{ matrix.config.cxx }}
+    - run: meson setup -Dcpp_std=c++17 ${{ matrix.config.compiler }}-c++17/
       env:
         CC: ${{ matrix.config.cc }},
         CXX: ${{ matrix.config.cxx }}
     - run: meson test -C ${{ matrix.config.compiler }}/ -v
+    - run: meson test -C ${{ matrix.config.compiler }}-c++17/ -v
