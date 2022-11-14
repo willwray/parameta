@@ -30,13 +30,6 @@ jobs:
             cc: "gcc-11", cxx: "g++-11"
           }
         - {
-            name: "Linux GCC-12 Rel (C++20)", artifact: "Linux.tar.xz",
-            os: ubuntu-22.04,
-            compiler: gcc-12,
-            build_type: RelWithDebInfo,
-            cc: "gcc-12", cxx: "g++-12"
-          }
-        - {
             name: "Linux Clang-12 Rel (C++20)", artifact: "Linux.tar.xz",
             os: ubuntu-22.04,
             compiler: clang-12,
@@ -58,7 +51,7 @@ jobs:
             cc: "cl", cxx: "cl",
           }
     steps:
-    - uses: de-vri-es/setup-git-credentials@v2
+    - uses: de-vri-es/setup-git-credentials@v2.0.10
       with:
         credentials: ${{secrets.GIT_CREDENTIALS}}
     - uses: actions/checkout@v3
