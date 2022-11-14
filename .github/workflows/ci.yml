@@ -23,28 +23,32 @@ jobs:
       matrix:
         config:
         - {
-            name: "Linux GCC-11 Rel (C++20)", artifact: "Linux.tar.xz",
+            name: "Linux GCC-11 Rel c++20, c++17",
+            artifact: "Linux.tar.xz",
             os: ubuntu-22.04,
             compiler: gcc-11,
             build_type: RelWithDebInfo,
             cc: "gcc-11", cxx: "g++-11"
           }
         - {
-            name: "Linux Clang-12 Rel (C++20)", artifact: "Linux.tar.xz",
+            name: "Linux Clang-12 Rel c++20, c++17",
+            artifact: "Linux.tar.xz",
             os: ubuntu-22.04,
             compiler: clang-12,
             build_type: RelWithDebInfo,
             cc: "clang-12", cxx: "clang++-12"
           }
         - {
-            name: "macOS Clang-14 Rel (C++20)", artifact: "macOS.tar.xz",
+            name: "macOS Clang-14 Rel c++20, c++17",
+            artifact: "macOS.tar.xz",
             os: macos-12,
             compiler: clang-14,
             build_type: RelWithDebInfo,
             cc: "clang", cxx: "clang++"
           }
         - {
-            name: "Windows MSVC 2022 Rel (C++20)", artifact: "Windows-MSVC.tar.xz",
+            name: "Windows MSVC 2022 Rel c++20, c++17",
+            artifact: "Windows-MSVC.tar.xz",
             os: windows-2022,
             compiler: msvc,
             build_type: RelWithDebInfo,
@@ -55,7 +59,7 @@ jobs:
       with:
         credentials: ${{secrets.GIT_CREDENTIALS}}
     - uses: actions/checkout@v3
-    - uses: actions/setup-python@v3
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
     - run: pip install meson ninja

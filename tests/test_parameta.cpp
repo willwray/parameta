@@ -247,10 +247,11 @@ using voidmeta = dynameta<void>;
 static_assert( ! METAVALUE(void) );
 
 using MSF = decltype(makestatic<function>());
+
 # ifndef _MSC_VER
 using SF = staticmeta<(function)>;
 #else
-using SF = staticmetacast<void(&)(),function>; // MSVC requires a cast
+using SF = staticmetacast<void(&)()noexcept,function>; // MSVC requires a cast
 #endif
 
 static_assert( SAME<SF,MSF> );
