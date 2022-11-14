@@ -181,7 +181,7 @@ template <typename L, typename = void>
 inline constexpr bool is_structural_value_functor_v = false;
 template <typename L>
 inline constexpr bool is_structural_value_functor_v<L,
-            decltype(structural_value_or_fail<L{}()>{},(void)0)> = true;
+  decltype(structural_value_or_fail<element0(L{}())>{},(void)0)> = true;
 #endif
 
 // structural_non_value<v>() : v is not valid as an rvalue auto NTTP

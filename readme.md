@@ -1092,17 +1092,21 @@ as well as static arrays and functions.
 
 </details>
 
+To get the type, macros can work:
+
+```c++
+  #define METASTATIC(X) decltype(makestatic<X>())
+
+  template <metaconst c> c checkonst(c);
+  #define MAKECONST(X) decltype(checkonst(makestatic<X>()))
+```
+
 <details><summary>
 Downsides of 'doubled up' deduction.
 </summary>
 
 The 'doubled up' deduction can't be aliased;
 only macros can 'forward' an argument to the overload set.
-For instance, to extract the type:
-
-```c++
-  #define METASTATIC(X) decltype(makestatic<X>())
-```
 
 The 'doubled up' deduction
 doubles the number of overloads required
@@ -1279,6 +1283,7 @@ To supress the warnings on gcc and clang use `-Wno-c++2b-extensions`.
 
 MSVC v19.34 has issues with non-type template parameter
 value category deduction.
+The makestatic function decays constexpr functions.
 Macros can be used to help keep code portable,
 see the `#define`'s in the library headers.
 

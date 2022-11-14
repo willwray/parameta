@@ -210,7 +210,8 @@ constexpr int constant{};
 
 [[maybe_unused]] test_metastatic<(global), false> metastatic_intref;
 
-constexpr void function()noexcept{}
+//constexpr
+void function()noexcept{}
 
 [[maybe_unused]]
 #ifndef _MSC_VER
@@ -248,7 +249,7 @@ static_assert( ! METAVALUE(void) );
 
 using MSF = decltype(makestatic<function>());
 
-# ifndef _MSC_VER
+#ifndef _MSC_VER
 using SF = staticmeta<(function)>;
 #else
 using SF = staticmetacast<void(&)()noexcept,function>; // MSVC requires a cast
@@ -270,6 +271,28 @@ static_assert( ! std::is_reference_v<decltype(makestatic<(k)>()())> );
 static_assert(   std::is_reference_v<decltype(makestatic<a>()())> );
 static_assert(   std::is_reference_v<decltype(makestatic<func>()())> );
 
+static_assert(   SAME<decltype(makestatic<a>()()), const float(&)[2]> );
+static_assert(   SAME<decltype(makestatic<func>()()), void(&)()> );
+
+#define MAKESTATIC(X) decltype(makestatic<X>())
+
+static_assert( ! METACONST(MAKESTATIC(a)) );
+static_assert(   METACONST(MAKESTATIC(func)) );
+
+#ifdef __cpp_concepts
+template <metaconst c> c checkonst(c);
+#else
+template<typename C> std::enable_if_t<is_metaconst_v<C>,C> checkonst(C);
+#endif
+#define MAKECONST(X) decltype(checkonst(makestatic<X>()))
+
+constexpr bool b[2]{};
+
+static_assert( ! std::is_reference_v<MAKECONST(42)::value_type> );
+static_assert( ! std::is_reference_v<MAKECONST(k)::value_type> );
+static_assert( ! std::is_reference_v<MAKECONST((k))::value_type> );
+static_assert(   std::is_reference_v<MAKECONST(b)::value_type> );
+static_assert(   std::is_reference_v<MAKECONST(func)::value_type> );
 
 static_assert( staticmeta<0,1,2,3>::metaget<0>() == 1 );
 static_assert( SAME<decltype(staticmeta<0,1,2,3>::metaget())

@@ -246,30 +246,6 @@ struct typemeta
 
 /* ****************************************************************** */
 
-/* makeconst<X>() function overloads deduce metaconst X with no decay */
-
-template <auto v, decltype(auto)...x, typename...T>
-constexpr auto makeconst(T...) -> staticmeta<v,x...>
-{ return {}; }
-
-#if __cpp_concepts
-template <auto const& v, decltype(auto)...x>
-constexpr auto makeconst()
-  requires (
-    ! requires{makeconst<v>;}
-    || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>)
-{ return staticmetacast<decltype(v)const&,v,x...>{}; }
-#else
-template <auto const& v, decltype(auto)...x>
-constexpr auto makeconst() ->
-std::enable_if_t<
-    impl::structural_non_value<v>()
-    || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmetacast<typeof(v)const&,v,x...>>
-{ return {}; }
-#endif
-
 /* makestatic<X>() function overloads deduce metaconst X if possible
                    else metastatic X, with no decay */
 
@@ -281,20 +257,32 @@ constexpr auto makestatic(T...) -> staticmeta<v,x...>
 template <auto const& v, decltype(auto)...x>
 constexpr auto makestatic()
   requires (
-    ! requires{makestatic<v>;}
+    impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
     || std::is_array_v<typeof(v)>)
 { return staticmetacast<decltype(v)const&,v,x...>{}; }
-#else
+
+#elif ! defined (_MSC_VER)
+
 template <auto const& v, decltype(auto)...x>
 constexpr auto makestatic() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmetacast<typeof(v)const&,v,x...>>
+    || std::is_array_v<typeof(v)>, staticmeta<v,x...>>
 { return {}; }
-#endif
 
+#else
+
+template <auto const& v, decltype(auto)...x>
+constexpr auto makestatic(
+std::enable_if_t<
+    impl::structural_non_value<v>()
+    || std::is_function_v<typeof(v)>
+    || std::is_array_v<typeof(v)>, bool> = true)
+{ return staticmetacast<decltype(v)const&,v,x...>{}; }
+
+#endif
 #include "namespace.hpp" // close configurable namespace
 
 #undef typeof
