@@ -254,19 +254,19 @@ constexpr auto makeconst(T...) -> staticmeta<v,x...>
 
 #if __cpp_concepts
 template <auto const& v, decltype(auto)...x>
-constexpr auto makeconst() -> staticmetacast<decltype(v)const&,v,x...>
+constexpr auto makeconst()
   requires (
     ! requires{makeconst<v>;}
     || std::is_function_v<typeof(v)>
     || std::is_array_v<typeof(v)>)
-{ return {}; }
+{ return staticmetacast<decltype(v)const&,v,x...>{}; }
 #else
 template <auto const& v, decltype(auto)...x>
 constexpr auto makeconst() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmetacast<decltype(v)const&,v,x...>>
+    || std::is_array_v<typeof(v)>, staticmetacast<typeof(v)const&,v,x...>>
 { return {}; }
 #endif
 
@@ -279,19 +279,19 @@ constexpr auto makestatic(T...) -> staticmeta<v,x...>
 
 #if __cpp_concepts
 template <auto const& v, decltype(auto)...x>
-constexpr auto makestatic() -> staticmetacast<decltype(v)const&,v,x...>
+constexpr auto makestatic()
   requires (
     ! requires{makestatic<v>;}
     || std::is_function_v<typeof(v)>
     || std::is_array_v<typeof(v)>)
-{ return {}; }
+{ return staticmetacast<decltype(v)const&,v,x...>{}; }
 #else
 template <auto const& v, decltype(auto)...x>
 constexpr auto makestatic() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmetacast<decltype(v)const&,v,x...>>
+    || std::is_array_v<typeof(v)>, staticmetacast<typeof(v)const&,v,x...>>
 { return {}; }
 #endif
 
