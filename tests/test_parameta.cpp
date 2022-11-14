@@ -1,18 +1,5 @@
 #include "parameta_traits.hpp"
 
-// MSVC decltype-related divergences. typeof is C23, possible C++26
-#ifdef _MSC_VER
-#  define typeof(...)std::remove_reference_t<decltype(__VA_ARGS__)>
-#  define MSVC_AS_CONST std::as_const
-#  define MSVCONST(...) std::as_const(__VA_ARGS__)
-#  define MSVC_DPAREN(...)(__VA_ARGS__)
-#else
-#  define typeof(...)__typeof(__VA_ARGS__)
-#  define MSVC_AS_CONST
-#  define MSVCONST(...)__VA_ARGS__
-#  define MSVC_DPAREN(...)__VA_ARGS__
-#endif
-
 #define SAME std::is_same_v
 
 #define REMOVE_REF_T(...) std::remove_reference_t<__VA_ARGS__>
@@ -236,13 +223,35 @@ metastatic_function;
 
 #include "parameta.hpp"
 
+// typeof(T) convenience, is in C23, possibly in C++26
+#ifndef typeof
+# ifdef _MSC_VER
+#  define typeof(...)std::remove_reference_t<decltype(__VA_ARGS__)>
+# else
+#  define typeof(...)__typeof(__VA_ARGS__)
+# endif
+#endif
+
+// MSVCONST(x) : MSVC sometimes seems to need NTTP const_cast
+#ifndef MSVCONST
+# ifdef _MSC_VER
+#  define MSVCONST(X) const_cast<typeof(X)const&>(X)
+# else
+#  define MSVCONST(X)X
+# endif
+#endif
+
 // dynameta<void> can be named but not instantiated
 using voidmeta = dynameta<void>;
 
 static_assert( ! METAVALUE(void) );
 
 using MSF = decltype(makestatic<function>());
-using SF = staticmeta<std::as_const(function)>;
+# ifndef _MSC_VER
+using SF = staticmeta<(function)>;
+#else
+using SF = staticmetacast<void(&)(),function>; // MSVC requires a cast
+#endif
 
 static_assert( SAME<SF,MSF> );
 static_assert( METACONST( SF, void()noexcept) );
@@ -250,13 +259,13 @@ static_assert( METACONST( SF, void()noexcept) );
 static_assert( METACONST( staticmeta<true>, bool) );
 static_assert( METACONST( staticmeta<false>,bool) );
 
-constexpr int i = 42;
+constexpr int k = 42;
 static float a[2] = {};
 void func(){}
 
 static_assert( ! std::is_reference_v<decltype(makestatic<42>()())> );
-static_assert( ! std::is_reference_v<decltype(makestatic<i>()())> );
-static_assert( ! std::is_reference_v<decltype(makestatic<(i)>()())> );
+static_assert( ! std::is_reference_v<decltype(makestatic<k>()())> );
+static_assert( ! std::is_reference_v<decltype(makestatic<(k)>()())> );
 static_assert(   std::is_reference_v<decltype(makestatic<a>()())> );
 static_assert(   std::is_reference_v<decltype(makestatic<func>()())> );
 
