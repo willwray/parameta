@@ -108,6 +108,8 @@
 #define METADATA_ACCESS_H "metadata_access.h"
 #endif
 
+/* ****************************************************************** */
+
 // consteval if available else fall back to constexpr for C++17
 //          (exclude MSVC due to false 'not constant expression')
 #if ! defined (CONSTEVAL)
@@ -128,6 +130,26 @@
 #     define STATIC_CALL_CV const
 #  endif
 #endif
+
+// typeof(T) convenience, is in C23, possibly in C++26
+#ifndef typeof
+# ifdef _MSC_VER
+#  define typeof(...)std::remove_reference_t<decltype(__VA_ARGS__)>
+# else
+#  define typeof(...)__typeof(__VA_ARGS__)
+# endif
+#endif
+
+// MSVCONST(x) : MSVC sometimes seems to need NTTP const_cast
+#ifndef MSVCONST
+# ifdef _MSC_VER
+#  define MSVCONST(X) const_cast<typeof(X)const&>(X)
+# else
+#  define MSVCONST(X)X
+# endif
+#endif
+
+/* ****************************************************************** */
 
 #include "parameta_traits.hpp"
 
@@ -224,26 +246,6 @@ struct typemeta
 
 /* ****************************************************************** */
 
-// typeof(T) convenience, is in C23, possibly in C++26
-#ifndef typeof
-# ifdef _MSC_VER
-#  define typeof(...)std::remove_reference_t<decltype(__VA_ARGS__)>
-# else
-#  define typeof(...)__typeof(__VA_ARGS__)
-# endif
-#endif
-
-// MSVCONST(x) : MSVC sometimes seems to need NTTP const_cast
-#ifndef MSVCONST
-# ifdef _MSC_VER
-#  define MSVCONST(X) const_cast<typeof(X)const&>(X)
-# else
-#  define MSVCONST(X)X
-# endif
-#endif
-
-/* ****************************************************************** */
-
 /* makeconst<X>() function overloads deduce metaconst X with no decay */
 
 template <auto v, decltype(auto)...x, typename...T>
@@ -252,7 +254,7 @@ constexpr auto makeconst(T...) -> staticmeta<v,x...>
 
 #if __cpp_concepts
 template <auto const& v, decltype(auto)...x>
-constexpr auto makeconst() -> staticmeta<MSVCONST(v),x...>
+constexpr auto makeconst() -> staticmetacast<decltype(v)const&,v,x...>
   requires (
     ! requires{makeconst<v>;}
     || std::is_function_v<typeof(v)>
@@ -264,7 +266,7 @@ constexpr auto makeconst() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmeta<MSVCONST(v),x...>>
+    || std::is_array_v<typeof(v)>, staticmetacast<decltype(v)const&,v,x...>>
 { return {}; }
 #endif
 
@@ -277,7 +279,7 @@ constexpr auto makestatic(T...) -> staticmeta<v,x...>
 
 #if __cpp_concepts
 template <auto const& v, decltype(auto)...x>
-constexpr auto makestatic() -> staticmeta<MSVCONST(v),x...>
+constexpr auto makestatic() -> staticmetacast<decltype(v)const&,v,x...>
   requires (
     ! requires{makestatic<v>;}
     || std::is_function_v<typeof(v)>
@@ -289,7 +291,7 @@ constexpr auto makestatic() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmeta<MSVCONST(v),x...>>
+    || std::is_array_v<typeof(v)>, staticmetacast<decltype(v)const&,v,x...>>
 { return {}; }
 #endif
 
