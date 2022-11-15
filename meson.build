@@ -12,5 +12,5 @@ parameta_dep = declare_dependency(
 
 test('test parameta',
   executable('test_parameta', 'tests/test_parameta.cpp',
-  dependencies : [parameta_dep])
+  dependencies : [parameta_dep, lml_namespace_dep])
 )
