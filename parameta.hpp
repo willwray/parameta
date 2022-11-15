@@ -253,26 +253,32 @@ template <auto v, decltype(auto)...x, typename...T>
 constexpr auto makestatic(T...) -> staticmeta<v,x...>
 { return {}; }
 
+#ifdef _MSC_VER
+#define STATICMETA_V_X decltype(staticmetacast<decltype(v)const&,v,x...>{})
+#else
+#define STATICMETA_V_X staticmeta<v,x...>
+#endif
+
 #if __cpp_concepts
 template <auto const& v, decltype(auto)...x>
-constexpr auto makestatic()
+constexpr auto makestatic() -> STATICMETA_V_X
   requires (
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
     || std::is_array_v<typeof(v)>)
-{ return staticmetacast<decltype(v)const&,v,x...>{}; }
+{ return {}; }
 
-#elif ! defined (_MSC_VER)
+#else
 
 template <auto const& v, decltype(auto)...x>
 constexpr auto makestatic() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, staticmeta<v,x...>>
+    || std::is_array_v<typeof(v)>, STATICMETA_V_X>
 { return {}; }
 
-#else
+#endif
 
 template <auto const& v, decltype(auto)...x>
 constexpr auto makestatic(

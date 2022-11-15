@@ -283,15 +283,8 @@ template <typename C> auto is_metaconst(C){
   static_assert(is_metaconst_v<C>);
   return C{};
 }
-#ifdef __cpp_concepts
-#define MAKECONST(X) decltype(([]{\
-static_assert(metaconst<decltype(makestatic<X>())>);\
-},makestatic<X>()))
-#else
 #define MAKECONST(X) decltype((is_metaconst(makestatic<X>())\
 ,makestatic<X>()))
-#endif
-//#define MAKECONST(X) decltype(checkonst(makestatic<X>()))
 
 constexpr bool b[2]{};
 
