@@ -269,7 +269,6 @@ constexpr auto makestatic() -> STATICMETA_V_X
 { return {}; }
 
 #else
-
 template <auto const& v, decltype(auto)...x>
 constexpr auto makestatic() ->
 std::enable_if_t<
@@ -280,15 +279,6 @@ std::enable_if_t<
 
 #endif
 
-template <auto const& v, decltype(auto)...x>
-constexpr auto makestatic(
-std::enable_if_t<
-    impl::structural_non_value<v>()
-    || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, bool> = true)
-{ return staticmetacast<decltype(v)const&,v,x...>{}; }
-
-#endif
 #include "namespace.hpp" // close configurable namespace
 
 #undef typeof
