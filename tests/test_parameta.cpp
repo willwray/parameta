@@ -279,19 +279,28 @@ static_assert(   SAME<decltype(makestatic<func>()()), void(&)()> );
 static_assert( ! METACONST(MAKESTATIC(a)) );
 static_assert(   METACONST(MAKESTATIC(func)) );
 
+template <typename C> auto is_metaconst(C){
+  static_assert(is_metaconst_v<C>);
+  return C{};
+}
 #ifdef __cpp_concepts
-template <metaconst c> c checkonst(c);
+#define MAKECONST(X) decltype(([]{\
+static_assert(metaconst<decltype(makestatic<X>())>);\
+},makestatic<X>()))
 #else
-template<typename C> std::enable_if_t<is_metaconst_v<C>,C> checkonst(C);
+#define MAKECONST(X) decltype((is_metaconst(makestatic<X>())\
+,makestatic<X>()))
 #endif
-#define MAKECONST(X) decltype(checkonst(makestatic<X>()))
+//#define MAKECONST(X) decltype(checkonst(makestatic<X>()))
 
 constexpr bool b[2]{};
 
 static_assert( ! std::is_reference_v<MAKECONST(42)::value_type> );
 static_assert( ! std::is_reference_v<MAKECONST(k)::value_type> );
 static_assert( ! std::is_reference_v<MAKECONST((k))::value_type> );
+#ifndef _MSC_VER // MSVC fails to see b as metaconst
 static_assert(   std::is_reference_v<MAKECONST(b)::value_type> );
+#endif
 static_assert(   std::is_reference_v<MAKECONST(func)::value_type> );
 
 static_assert( staticmeta<0,1,2,3>::metaget<0>() == 1 );
