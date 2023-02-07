@@ -3,14 +3,11 @@ project('parameta', 'cpp',
   version : '0.9'
 )
 
-lml_namespace_dep = subproject('lml_namespace').get_variable('lml_namespace_dep')
-
 parameta_dep = declare_dependency(
-  dependencies: [lml_namespace_dep],
   include_directories : include_directories('.')
 )
 
 test('test parameta',
   executable('test_parameta', 'tests/test_parameta.cpp',
-  dependencies : [parameta_dep, lml_namespace_dep])
+  dependencies : [parameta_dep])
 )

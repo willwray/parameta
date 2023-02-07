@@ -36,7 +36,7 @@ template <decltype(auto) v>
 constexpr inline decltype(auto) make_unsigned_v
                               = make_unsigned_t<decltype(v)>{v};
 
-using namespace LML_NAMESPACE_ID;
+using namespace NAMESPACE_ID;
 
 // Test parameta_traits concepts and/or corresponding C++17 traits
 
