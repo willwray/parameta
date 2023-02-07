@@ -22,23 +22,21 @@ static CONSTEVAL decltype(auto) metasize() noexcept
   return sizeof...(x);
 }
 
-template <auto...I>
+template <int...I>
 static CONSTEVAL decltype(auto) metaget() noexcept
 {
-  static_assert(sizeof...(x) != 0
-               , "metaget on type with no metadata");
-  static_assert((std::is_integral_v<decltype(I)> && ...)
-               , "metaget index must be an integral type");
+  constexpr int size{sizeof...(x)};
+  static_assert(size != 0, "metaget on type with no metadata");
 
   if constexpr (sizeof...(I) == 0)
     return staticmeta<x...>{};
   else if constexpr (sizeof...(I) > 1)
     return staticmeta<metaget<I>()()...>{};
   else {
-    constexpr auto i = [K=(I,...)]{ return K<0 ? K+sizeof...(x) : K;}();
+    constexpr int K {(I,...)};
+    constexpr int i {K<0 ? K+size : K};
 
-    static_assert( i >= 0 && i < sizeof...(x)
-                 , "metaget index out of bounds");
+    static_assert( i >= 0 && i < size, "metaget index out of bounds");
 
     if constexpr (i == 0)
       return staticmeta<staticmeta<x...>{}()>{};
