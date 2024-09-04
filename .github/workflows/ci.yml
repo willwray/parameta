@@ -1,8 +1,6 @@
-/*
- SPDX-FileCopyrightText: 2024 The Lemuriad <opensource@lemuriad.com>
- SPDX-License-Identifier: BSL-1.0
- Repo: https://github.com/lemuriad/parameta
-*/
+# SPDX-FileCopyrightText: 2024 The Lemuriad <opensource@lemuriad.com>
+# SPDX-License-Identifier: BSL-1.0
+# Repo: https://github.com/lemuriad/parameta
 
 name: ci_meson
 
