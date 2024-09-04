@@ -1,6 +1,8 @@
-# Copyright 2022 Lemurian Labs
-# Distributed under the Boost Software License, Version 1.0.
-# (See accompanying file LICENSE or http://boost.org/LICENSE_1_0.txt)
+/*
+ SPDX-FileCopyrightText: 2024 The Lemuriad <opensource@lemuriad.com>
+ SPDX-License-Identifier: BSL-1.0
+ Repo: https://github.com/lemuriad/parameta
+*/
 
 name: ci_meson
 
@@ -55,9 +57,6 @@ jobs:
             cc: "cl", cxx: "cl",
           }
     steps:
-    - uses: de-vri-es/setup-git-credentials@v2.0.10
-      with:
-        credentials: ${{secrets.GIT_CREDENTIALS}}
     - uses: actions/checkout@v3
     - uses: actions/setup-python@v4
       with:

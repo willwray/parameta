@@ -1,9 +1,8 @@
-//  Copyright (c) 2022 Lemurian Labs https://www.lemurianlabs.com/
-//
-//  Distributed under the Boost Software License, Version 1.0.
-//        http://www.boost.org/LICENSE_1_0.txt
-//
-//  Repo: https://github.com/Lemurian-Labs/parameta
+/*
+ SPDX-FileCopyrightText: 2024 The Lemuriad <opensource@lemuriad.com>
+ SPDX-License-Identifier: BSL-1.0
+ Repo: https://github.com/lemuriad/parameta
+*/
 
 #ifndef LML_PARAMETA_TRAITS_HPP
 #define LML_PARAMETA_TRAITS_HPP
