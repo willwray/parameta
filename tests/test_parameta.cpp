@@ -3,38 +3,24 @@
 #define SAME std::is_same_v
 
 #define REMOVE_REF_T(...) std::remove_reference_t<__VA_ARGS__>
-#if __cpp_lib_remove_cvref
 #define REMOVE_CVREF_T(...) std::remove_cvref_t<__VA_ARGS__>
-#else
-#define REMOVE_CVREF_T(...) std::remove_cv_t<REMOVE_REF_T(__VA_ARGS__)>
-#endif
 
+// as_unsigned<T>
 template <typename T>
-struct typex { using type = T; };
-
-template <typename T> auto make_unsigned();
-
-template <typename T> using make_unsigned_t = typename decltype(
-                            make_unsigned<REMOVE_REF_T(T)>())::type;
-
-template <typename T> auto make_unsigned()
+consteval auto as_unsigned()
 {
-  if constexpr (! std::is_reference_v<T>) {
-    if constexpr (std::is_integral_v<T>)
-      return std::make_unsigned<T>{};
-    else
-      return typex<T>{};
-  } else {
-    using U = make_unsigned_t<T>;
+    using U = std::make_unsigned_t<std::remove_reference_t<T>>;
     if constexpr (std::is_lvalue_reference_v<T>)
       return std::add_lvalue_reference<U>{};
     else
+    if constexpr (std::is_rvalue_reference_v<T>)
       return std::add_rvalue_reference<U>{};
-  }
+    else
+      return std::type_identity<U>{};
 }
-template <decltype(auto) v>
-constexpr inline decltype(auto) make_unsigned_v
-                              = make_unsigned_t<decltype(v)>{v};
+
+template <typename T> using as_unsigned_t = typename decltype(
+                            as_unsigned<T>())::type;
 
 using namespace NAMESPACE_ID;
 
@@ -105,7 +91,7 @@ metavalue<char> auto charchar = std::integral_constant<char,42>{}; // ok
 
 template <typename VT> struct test_metavalue {
 
-using UT = make_unsigned_t<VT>;
+using UT = as_unsigned_t<VT>;
 
 #define VALUE_TYPE using value_type = VT;
 #define VALUE VT value;
@@ -177,7 +163,7 @@ template <decltype(auto) v,
           bool ConstExpr = true> struct test_metastatic {
 
 using VT = decltype(v);
-//static constexpr decltype(auto) u = make_unsigned_v<v>;
+//static constexpr decltype(auto) u = as_unsigned_v<v>;
 
 #define VALUE_TYPE using value_type = VT;
 #define VALUE inline static VT value = v;
@@ -217,10 +203,21 @@ void function()noexcept{}
 #ifndef _MSC_VER
 test_metastatic<(function)>
 #else
-test_metastatic<static_cast<void(&)()noexcept>(function)>
+test_metastatic<static_t<void(&)()noexcept>(function)>
 #endif
 metastatic_function;
 
+int global_array[]{1};
+
+template <auto...> struct vlist;
+
+static_assert( auto_list< vlist<> > );
+static_assert( auto_list< vlist<1> > );
+static_assert( auto_list< vlist<(global_array)> > );
+static_assert( auto_list< vlist<'s',short{'s'},int{'s'}> > );
+
+static_assert( auto_list_element<0, vlist<1>> == 1 );
+static_assert( auto_list_element<0, vlist<(global_array)>> == &global_array[0] );
 
 #include "parameta.hpp"
 
@@ -242,24 +239,24 @@ metastatic_function;
 # endif
 #endif
 
-// dynameta<void> can be named but not instantiated
-using voidmeta = dynameta<void>;
+// dynamic_<void> can be named but not instantiated
+using voidmeta = dynamic_<void>;
 
 static_assert( ! METAVALUE(void) );
 
 using MSF = decltype(makestatic<function>());
 
 #ifndef _MSC_VER
-using SF = staticmeta<(function)>;
+using SF = static_<(function)>;
 #else
-using SF = staticmetacast<void(&)()noexcept,function>; // MSVC requires a cast
+using SF = static_t<void(&)()noexcept,function>; // MSVC requires a cast
 #endif
 
 static_assert( SAME<SF,MSF> );
 static_assert( METACONST( SF, void()noexcept) );
 
-static_assert( METACONST( staticmeta<true>, bool) );
-static_assert( METACONST( staticmeta<false>,bool) );
+static_assert( METACONST( static_<true>, bool) );
+static_assert( METACONST( static_<false>,bool) );
 
 constexpr int k = 42;
 static float a[2] = {};
@@ -296,36 +293,60 @@ static_assert(   std::is_reference_v<MAKECONST(b)::value_type> );
 #endif
 static_assert(   std::is_reference_v<MAKECONST(func)::value_type> );
 
-static_assert( staticmeta<0,1,2,3>::metaget<0>() == 1 );
-static_assert( SAME<decltype(staticmeta<0,1,2,3>::metaget())
-                             , staticmeta<1,2,3>> );
-static_assert( SAME<decltype(staticmeta<0,1,2,3>::metaget<2,1,0>())
-                             , staticmeta<3,2,1>> );
+static_assert( static_<0,1,2,3>::value == 0 );
+static_assert( decltype(static_<0,1,2,3>::metadata)::size == 3 );
+static_assert( decltype(static_<0,1,2,3>::metadata)::get<0>() == 1 );
+static_assert( decltype(static_<0,1,2,3>::metadata){} == metadata<1,2,3>{} );
 
-auto p0123 = staticmeta<0,1,2,3>{};
+static_assert( SAME<decltype(static_<0,1,2,3>::metadata)
+                             ,metadata<1,2,3> const> );
+static_assert( SAME<decltype(static_<0,1,2,3>::metadata.get<0>()),static_<1>> );
+static_assert( SAME<decltype(static_<0,1,2,3>::metadata.get<2,1,0>())
+                             , static_<3,2,1>> );
 
-static_assert( p0123.metasize() == 3 );
+auto p0123 = static_<0,1,2,3>{};
+
+static_assert( p0123.metadata.size == 3 );
 static_assert( p0123 == 0 );
-static_assert( p0123.metaget() == 1 );
-static_assert( p0123.metaget().metaget() == 2 );
-static_assert( p0123.metaget().metaget().metaget() == 3 );
-static_assert( p0123.metaget<0>() == 1 &&  p0123.metaget<-3>() == 1 );
-static_assert( p0123.metaget<1>() == 2 &&  p0123.metaget<-2>() == 2 );
-static_assert( p0123.metaget<2>() == 3 &&  p0123.metaget<-1>() == 3 );
+static_assert( p0123.metadata.get<0>() == 1 &&  p0123.metadata.get<-3>() == 1 );
+static_assert( p0123.metadata.get<1>() == 2 &&  p0123.metadata.get<-2>() == 2 );
+static_assert( p0123.metadata.get<2>() == 3 &&  p0123.metadata.get<-1>() == 3 );
 
-auto d0123 = dynameta<int,1,2,3>{};
+//dynamic
+static_assert( SAME<decltype(dynamic_<int,1,2,3>::value), int> );
+static_assert( decltype(dynamic_<int,1,2,3>::metadata)::size == 3 );
+static_assert( decltype(dynamic_<int,1,2,3>::metadata)::get<0>() == 1 );
+static_assert( decltype(dynamic_<int,1,2,3>::metadata){} == metadata<1,2,3>{} );
 
-static_assert( d0123.metasize() == 3 );
-static_assert( d0123.metaget() == 1 );
-static_assert( d0123.metaget<0>() == 1 && d0123.metaget<-3>() == 1 );
-static_assert( d0123.metaget<1>() == 2 && d0123.metaget<-2>() == 2 );
-static_assert( d0123.metaget<2>() == 3 && d0123.metaget<-1>() == 3 );
+static_assert( SAME<decltype(dynamic_<int,1,2,3>::metadata)
+                                ,metadata<1,2,3>> );
+static_assert( SAME<decltype(dynamic_<int,1,2,3>::metadata.get<0>()),static_<1>> );
+static_assert( SAME<decltype(dynamic_<int,1,2,3>::metadata.get<2,1,0>())
+                             , static_<3,2,1>> );
+
+auto d0123 = dynamic_<int,1,2,3>{};
+
+static_assert( d0123.metadata.size == 3 );
+static_assert( d0123.metadata.get<0>() == 1 && d0123.metadata.get<-3>() == 1 );
+static_assert( d0123.metadata.get<1>() == 2 && d0123.metadata.get<-2>() == 2 );
+static_assert( d0123.metadata.get<2>() == 3 && d0123.metadata.get<-1>() == 3 );
+
+static_assert( static_<1>{} == static_<1>{} );
+static_assert( dynamic_{1} == static_<1>{} );
+static_assert( dynamic_{1} == static_<1>{} );
+static_assert( dynamic_{1} != dynamic_{1, metadata<1,2,3>{}} );
+static_assert( dynamic_{2} != dynamic_{1} );
+static_assert( static_<2>{} != static_<1>{} );
+
+auto static_CTAD = static_{static_<1>{}, metadata<1,2,3>{}};
+auto static_var_CTAD = static_{static_<(global)>{}, metadata<1,2,3>{}};
 
 int main() {}
 
 #if __cpp_concepts
 #include <algorithm>
 #include <memory>
+#include <new>
 using std::unique_ptr;
 using std::make_unique;
 using std::integral;
@@ -344,33 +365,34 @@ using std::integral;
     NUA Extent extent{};
   };
 
-template <typename T, int N> using array = ray<T[N], staticmeta<N>>;
+template <typename T, int N> using array = ray<T[N], static_<N>>;
 
   array<int,2>  i2 {{4,2}}; // ray<int[2],metastatic<2>>
   array<char,4> c4 {"str"}; // ray<char[4],metastatic<4>>
 
 static_assert( sizeof c4 == 4 && c4.extent == 4 );
 
-template <typename P> using span = ray<P,dynameta<int>>;
+template <typename P> using span = ray<P,dynamic_<int>>;
 
   char buffer[4];
   span<char*> eh{buffer,{4}};
 
-  span<unique_ptr<char[]>> up{make_unique<char[]>(4),{4}};
+  //span<unique_ptr<char[]>> up{make_unique<char[]>(4),{4}};
 
-  ray<char(&)[4], staticmeta<4>> sp{buffer};
+  ray<char(&)[4], static_<4>> sp{buffer};
 
-  ray<staticmetacast<char(&)[4], buffer>, staticmeta<4>> sb{};
+  ray<static_t<char(&)[4], buffer>, static_<4>> sb{};
 
 static_assert( sizeof eh == 16 );
-static_assert( sizeof up == 16 );
+//static_assert( sizeof up == 16 );
 static_assert( sizeof sp == 8 );
 static_assert( sizeof c4 == 4 );
 static_assert( sizeof sb == 1 );
+static_assert( std::is_empty_v<decltype(sb)> );
 
 void cp() {
   std::copy_n("1234", eh.extent, &eh.data[0]);
-  std::copy_n("1234", up.extent, &up.data[0]);
+  //std::copy_n("1234", up.extent, &up.data[0]);
   std::copy_n("1234", sp.extent, &sp.data[0]);
   std::copy_n("1234", c4.extent, &c4.data[0]);
   std::copy_n("1234", sb.extent, &sb.data[0]);

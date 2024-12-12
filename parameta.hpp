@@ -10,237 +10,148 @@
 /*
   parameta.hpp
   ============
-  Meta parameter types for meta parameterization of template signatures:
 
-   'dynameta' and 'staticmeta'  meta value class templates
-   'typemeta'                   meta type class template
-
-  Targets C++20 concepts. C++17 is supported with no concepts or cNTTP.
-  See the repo readme for more background, motivation and example usage.
-
-  * staticmeta<v,x...> represents constexpr value v, or a static id
-  * dynameta<T,x...> represents a value of type T, its value TBD at init
-  * typemeta<T,x...> represents type T
-
-  The variadic x... arguments are optional extra metadata
-  (or staticmeta<v...> may be used as a list of constexpr values or ids)
-
-  staticmeta is like std::integral_constant
-  dynameta   is like std::dynamic_extent, in intent, but a meta *type*
-  typemeta   is like std::type_identity
-
-  integral_constant can be fully implemented in terms of staticmeta,
-  and a type alias staticmetacast is provided with the same signature
-
-    template <typename T, T v> using integral_constant = staticmeta<v>;
-    template <typename T, T v> using staticmetacast = staticmeta<v>;
-
-  staticmeta is an empty type. The value v, or its id, is carried in the
-  template signature, so is manifestly usable as a template argument.
-  Immutability is not implied; a static id may refer to mutable data.
-
-  dynameta<T> type heralds a 'dynamic' or deferred value; its signature
-  carries only the type of the value. "Dynamic" implies initialization
-  is dynamic, to a runtime-determined value; mutability is not implied.
-
-  typemeta<T> is included mostly for completeness; a type with metadata.
-
-  Concepts
-  ========
-  The meta parameter types model the concepts in "parameta_traits.hpp".
-  Here, c is a constexpr value and p a non-constexpr static value id:
-
-  * staticmeta<c>   models 'metavalue' < 'metastatic' < 'metaconst'
-  * staticmeta<(p)> models 'metavalue' < 'metastatic'
-  * dynameta<T>     models 'metavalue'
-
-  * typemeta<T>     models 'metatype'
-
-  See the repo docs and header for concept definitions and usage notes.
-
-  API Summary
-  ===========
-  The value of any metavalue object m is extracted as m.value, m() or by
-  implicit conversion to typename decltype(m)::value_type. Both dynameta
-  and staticmeta model the metavalue concept so implement the same value
-  access API and are substitutable, as long as not presumed constexpr.
-
-  A metastatic or metaconst value may be accessed directly from the meta
-  type M, as M::value or M{}(), and is constexpr for metaconst<M>.
-
-  The class synopses below highlight the template signature difference;
-  dynameta wraps a non-static data member while staticmeta has a static
-  constexpr data member 'value':
-
-                    template <typename T, decltype(auto)... x>
-    struct dynameta {
-                      using value_type = T;
-                      value_type value;
-                    // API };
-
-                      template <decltype(auto) v, decltype(auto)... x>
-    struct staticmeta {
-                        using value_type = decltype(v);
-                        static constexpr value_type value = v; ...
-                      // API };
-
-  The remaining access API is identical to std::integral_constant
-
-  Metadata access
-
-  Three static member functions, metasize(), metaget<I>() and  meta(f)
-  provide access to the metadata x...
-
-  * M::metasize() returns number of x... arguments, i.e. -> sizeof...(x)
-  * M::metaget<I>() returns the Ith x... argument
-  * M::meta(f) returns f.template operator()<x...>();
+  A C++20 library of meta-types and concepts for generic specification
+  of parameters as either compile-time constants or runtime variables.
+  Meta parameter types model concepts defined in parameta_traits.hpp
+  and can also carry optional metadata.
 */
-
-/* METADATA_ACCESS_H
-  In-class accessors are not necessary, as x... is part of the type.
-  They're a convenience. meta(f) assists generic out-of-class access.
-  However, Clang bug https://github.com/llvm/llvm-project/issues/58682
-  necessitates in-class API. The three static members are injected by
-  #include "metadata_acess.h", as controlled by this filename symbol:
-*/
-#ifndef METADATA_ACCESS_H
-#define METADATA_ACCESS_H "metadata_access.h"
-#endif
-
-/* ****************************************************************** */
-
-// consteval if available else fall back to constexpr for C++17
-//          (exclude MSVC due to false 'not constant expression')
-#if ! defined (CONSTEVAL)
-#  if defined (__cpp_consteval) && ! defined (_MSC_VER)
-#     define CONSTEVAL consteval
-#  else
-#     define CONSTEVAL constexpr
-#  endif
-#endif
-
-// static call operator() if available C++23 https://wg21.link/p1169
-#if ! defined (STATIC_CALL)
-#  if defined (__cpp_static_call_operator)
-#     define STATIC_CALL static
-#     define STATIC_CALL_CV
-#  else
-#     define STATIC_CALL
-#     define STATIC_CALL_CV const
-#  endif
-#endif
-
-// typeof(T) convenience, is in C23, possibly in C++26
-#ifndef typeof
-# ifdef _MSC_VER
-#  define typeof(...)std::remove_reference_t<decltype(__VA_ARGS__)>
-# else
-#  define typeof(...)__typeof(__VA_ARGS__)
-# endif
-#endif
-
-// MSVCONST(x) : MSVC sometimes seems to need NTTP const_cast
-#ifndef MSVCONST
-# ifdef _MSC_VER
-#  define MSVCONST(X) const_cast<typeof(X)const&>(X)
-# else
-#  define MSVCONST(X)X
-# endif
-#endif
-
-/* ****************************************************************** */
 
 #include "parameta_traits.hpp"
+#include "parameta_platform.hpp"
 
-#include "namespace.hpp" // open namespace LML_NAMESPACE_ID
-
-// Class declarations; typemeta, dynameta, staticmeta
-template <typename,       decltype(auto)...> struct typemeta;
-template <typename,       decltype(auto)...> struct dynameta;
-template <decltype(auto), decltype(auto)...> struct staticmeta;
-
-// staticmetacast<T,v> : explicit-type alias of staticmeta
-template <typename T, T v, decltype(auto)...x> using staticmetacast
-                                                   = staticmeta<v,x...>;
+#include "namespace.hpp"
 
 /* ****************************************************************** */
-/* staticmeta<v,x...> std::integral_constant<T,v> minus T plus x...
-                    - eliminates the unneccessary type parameter T
-                    - adds variadic 'xtra' NTTP metadata x...
 
-  staticmeta is a metavalue type that represents a static value.
-  staticmeta<v> encodes a value v, by value, or its id by reference,
-                using decltype(auto) to deduce the value category of v
+// metadata<x...> holds a variadic pack of values, a compile-time tuple
+template <auto...> struct metadata;
 
-  The static data member 'value' memos an rvalue v else an lvalue id if
-  the member type alias value_type = decltype(v) is an lvalue reference.
-  The call operator()()const returns the value, and there's an implicit
-  conversion to the value, both by value_type so possibly by reference.
+// Forward declarations of class templates type_, dynamic_, static_
+template <typename,       auto...> struct type_;
+template <typename,       auto...> struct dynamic_;
+template <decltype(auto), auto...> struct static_;
+template <typename T,T v, auto...x> using static_t
+                                        = static_<v,x...>;
+
+template <decltype(auto), auto...> struct parameta;
+
+/* ****************************************************************** */
+/* metadata<x...>
+
+  A tuple of values held as a pack of NTTP non-type template parameters.
+
+  m.size: the number of elements in pack x... (static data member)
+  m.get<I>() get the Ith element in pack x... (and optionally more values)
+  m.map(f) returns f(x...) given functor f that accepts value pack x...
 */
 
-template <decltype(auto) v, decltype(auto)...x>
-struct staticmeta
+template <auto...x>
+struct metadata
 {
-  using type = staticmeta;
-  using value_type = decltype(v); // may be an lvalue ref
-                                 // but not an rvalue ref
-  static constexpr value_type value = v;
-  STATIC_CALL
-  CONSTEVAL value_type operator()() STATIC_CALL_CV noexcept {return v;}
-  CONSTEVAL operator value_type() const noexcept {return v;}
+  static constexpr auto size = sizeof...(x);
 
-#if __has_include(METADATA_ACCESS_H)
-# include METADATA_ACCESS_H
-#endif
+  template <int...I>
+    requires (sizeof...(I) > 0
+              && size > 0
+              && (((I < int{size}) && (I >= -int{size})) && ...))
+  static CONSTEVAL auto get() noexcept
+    -> static_<auto_pack_element<(I >= 0 ? I : I+size), x...>()...>
+  { return {}; }
+
+  static constexpr decltype(auto) map(auto f) noexcept(noexcept(f(x...)))
+  { return f(x...); }
+
+  friend auto operator<=>(metadata,metadata) = default;
 };
 
 /* ****************************************************************** */
-/* dynameta<T,x...> wraps a non-static data member, T value;
+/* static_<v,x...> is a metavalue type that represents a static value.
+
+  static_<v> is defined following std::integral_constant<decltype(v),v>
+  with optional variadic 'xtra' NTTP metadata x... and CTAD.
+
+  It encodes a value v, or its id, in the initial NTTP template argument
+  using decltype(auto) to deduce the value category as prvalue or lvalue.
+*/
+
+template <decltype(auto) v, auto...x>
+struct static_
+{
+  using type = static_;
+  using value_type = decltype(v); // may be an lvalue ref
+                                 // but not an rvalue ref
+  static constexpr value_type value = v;
+  static constexpr ::metadata<x...> metadata = {};
+
+  STATIC_CALL_OP_IF_AVAILABLE(
+  CONSTEVAL value_type operator()() /*const*/, noexcept {return v;}
+  )
+  CONSTEVAL operator value_type() const noexcept {return v;}
+
+  static_() = default;
+
+  // CTAD constructor
+  consteval
+  static_(metastatic<value_type> auto V, ::metadata<x...> = {}) noexcept
+      requires (!metaconst<type> || V==v) {}
+};
+
+// CTAD guide
+template <metastatic V, auto...x>
+static_(V, metadata<x...>) -> static_<V::value, x...>;
+
+/* ****************************************************************** */
+/* dynamic_<T,x...> wraps a non-static data member, T value;
                   - has the metavalue access API of integral_constant
                   - has variadic 'xtra' NTTP metadata x...
 
-  dynameta is a metavalue type that represents a value of type T, whose
+  dynamic_ is a metavalue type that represents a value of type T, whose
   actual value is to be determined at runtime by dynamic initialization.
   The call operator()()const returns the value, and there's an implicit
   conversion to the value, both by value_type. Reference types allowed.
 */
 
-template <typename T, decltype(auto)...x>
-struct dynameta
+template <typename T, auto...x>
+struct dynamic_
 {
-  using type = dynameta;
+  using type = dynamic_;
   using value_type = T;
 
   value_type value;
+  [[no_unique_address]] ::metadata<x...> metadata = {};
 
   constexpr value_type operator()() const noexcept {return value;}
   constexpr operator value_type() const noexcept {return value;}
 
-#if __has_include(METADATA_ACCESS_H)
-# include METADATA_ACCESS_H
-#endif
+  friend auto operator<=>(dynamic_,dynamic_) = default;
+
+  template <typename U, auto...y>
+  friend constexpr bool operator==(dynamic_,dynamic_<U,y...>) noexcept
+  { return false; }
 };
 
-// dynameta deduction guide
-// deduces an object type, except for (unambiguous) function args which
-// deduce a reference type (for full providence and non-nullability).
-// A deduced array value type causes dynameta instantiation failure.
+// dynamic_ CTAD guides deduce the object value type of the argument
+// (except functions deduce as reference type for non-nullability)
+// (arrays deduce as array objects which fail to copy initialize).
 //
-template <typename T> dynameta(T const&)
-                   -> dynameta<std::conditional_t<
-                               std::is_function_v<T>, T&, T >>;
+template <typename T>
+dynamic_(T const&)
+  -> dynamic_<std::conditional_t<std::is_function_v<T>, T&, T >>;
 
-/* ****************** typemeta  ************************* */
-/* typemeta<T,x...> like std::type_identity, plus xtra metadata x...
+template <typename T, auto...x>
+dynamic_(T const&, metadata<x...>)
+  -> dynamic_<std::conditional_t<std::is_function_v<T>, T&, T>,x...>;
+
+/* ****************** type_  ************************* */
+/* type_<T,x...> like std::type_identity, plus xtra metadata x...
 */
-template <typename T, decltype(auto)...x>
-struct typemeta
+template <typename T, auto...x>
+struct type_
 {
   using type = T;
 
-#if __has_include(METADATA_ACCESS_H)
-# include METADATA_ACCESS_H
-#endif
+  static ::metadata<x...> metadata{};
 };
 
 /* ****************************************************************** */
@@ -248,42 +159,33 @@ struct typemeta
 /* makestatic<X>() function overloads deduce metaconst X if possible
                    else metastatic X, with no decay */
 
-template <auto v, decltype(auto)...x, typename...T>
-constexpr auto makestatic(T...) -> staticmeta<v,x...>
-{ return {}; }
-
-#ifdef _MSC_VER
-#define STATICMETA_V_X decltype(staticmetacast<decltype(v)const&,v,x...>{})
-#else
-#define STATICMETA_V_X staticmeta<v,x...>
-#endif
+template <auto v, auto...x, typename...T>
+constexpr auto makestatic(T...) noexcept
+{ return static_<v,x...>{}; }
 
 #if __cpp_concepts
-template <auto const& v, decltype(auto)...x>
-constexpr auto makestatic() -> STATICMETA_V_X
+template <auto const& v, auto...x>
+constexpr auto makestatic() noexcept
   requires (
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
     || std::is_array_v<typeof(v)>)
-{ return {}; }
+{ return static_<v,x...>{}; }
 
 #else
-template <auto const& v, decltype(auto)...x>
+
+template <auto const& v, auto...x>
 constexpr auto makestatic() ->
 std::enable_if_t<
     impl::structural_non_value<v>()
     || std::is_function_v<typeof(v)>
-    || std::is_array_v<typeof(v)>, STATICMETA_V_X>
+    || std::is_array_v<typeof(v)>, static_<v,x...>>
 { return {}; }
 
 #endif
 
-#include "namespace.hpp" // close configurable namespace
+#include "namespace.hpp"
 
-#undef typeof
-#undef MSVCONST
-#undef STATIC_CALL
-#undef CONSTEVAL
-#undef METADATA_ACCESS_H
+#include "parameta_platform.hpp"
 
 #endif

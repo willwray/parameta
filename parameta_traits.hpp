@@ -8,107 +8,96 @@
 #define LML_PARAMETA_TRAITS_HPP
 
 /*
-  parameta_traits.hpp
+  parameta_traits.hpp : Concepts for 'meta parameterization'
   ===================
 
-  Concepts for 'meta parameterization' of template signatures.
+  This header defines concepts for types that represent values;
+  types like integral_constant that encode a 'static' value
+  or types that hold a 'dynamic' value to be determined at runtime
+  with equivalent access APIs, apart from constexpr-ness of value.
 
-  Depends on <type_traits> and targets C++20 language concepts.
-  C++17 is supported with no concepts, only the equivalent traits.
+  Treating value parameters uniformly as types in template signatures
+  enables expressive APIs with flexible 'generic staticity', useful
+  e.g. for mixed static and dynamic multidimensional array extents.
 
-  Meta value
-  =concepts=       'metavalue' < 'metastatic' < 'metaconst'
+  * Targets C++20 concepts and depends only on <concepts>.
+  * There's C++17 trait-only support using <type_traits> as fallback.
 
-  =traits=   is_metavalue[_v], is_metastatic[_v], is_metaconst[_v]
+  Meta value concepts:
 
-  Meta value concepts accept meta value *types*. They can replace NTTP
-  *non-type* template parameters with constrained TTP *type* parameters
-  for uniform and expressive template APIs and for 'generic staticity'.
+               metavalue  <  metastatic  <  metaconst
 
-  Based on the non-static value access API of std::integral_constant,
-  these meta value concepts have increasingly constrained requirements;
-  the metavalue concept refines to metastatic, requiring static value,
-  and then metaconst, requiring constexpr value (the most constrained).
+  An object of metavalue type is used as a constant, read-only, parameter.
+  It may further be metastatic or a fully metaconst compile-time constant.
 
-  The concepts are modeled by the meta types defined in "parameta.hpp";
-  'dynameta' and 'staticmeta' metavalues, and 'typemeta' metatype.
+  If the type is metaconst then the value is a constant expression encoded
+  in the type; a static compile-time value initialized by an NTTP argument,
+  e.g. integral_constant<S,v> for structural type S of constexpr value v.
 
-  Concepts
-  ========
-  Meta type concept:
+  Otherwise, a non-metaconst metavalue's value has runtime storage.
 
-  * metatype<Q> concept: class types Q that represent types;
-                empty class with 'type' member alias and no operator()
+  A (non-metaconst) metastatic type's value has static storage duration
+  with the value's static id encoded in the type as a reference argument,
+  e.g. integral_constant<T&,id> for referencable type T of static id.
+ 
+  Otherwise, a non-metaconst non-metastatic metavalue type's value has
+  dynamic storage duration. E.g. lml::dynamic_<int>{1}
 
-  Meta value concepts require the value access API of integral_constant:
+ ***********************************************************************
 
-  * metavalue<Q,VT> concept: class types Q that represent values;
-                a 'value' data member of 'value_type' type alias,
-                a no-arg function call operator()()const -> value_type;
-                and an implicit conversion operator value_type() const;
-                both returning 'value' (value_type may be a reference)
-
-  * metastatic<Q,VT> concept: metavalue of constexpr value or static id;
-                empty class, value accepted by template<decltype(auto)>
-
-  * metaconst<Q,VT> concept: metastatic of constexpr value;
-                             value accepted by template<auto>
-
-                VT defaults to VT = return type of Q::operator()()const
-                (if it exists, otherwise void and the concept is false)
-
-  metaconst is most constrained; a constexpr-valued 'integral_constant'
-  carrying a value of any type valid as an auto template argument.
-
-  metastatic further accepts possibly non-constexpr values by reference,
-  binding to a possibly-mutable variable id of static storage duration.
-
-  metavalue is least constrained; it accepts all the above plus classes
-  with non-static data member value for runtime dynamic initialization.
-
-  Concept examples
+  Concept synposis : the API of std::integral_constant, decomposed
   ================
-    int g = {}; // a mutable global variable, static storage duration
 
-    metavalue auto one = 1; // compile FAIL; int is not a metavalue
+ 'metavalue'
+   A type Q is metavalue if it is a class with:
+  * Q::value_type; type alias member, possibly a reference type
+  * Q::value; data member of value_type, possibly static, possibly const
+  * Q::operator()() const -> value_type; no-arg call operator
+  * Q::operator value_type() const; implicit conversion to value_type
 
-    metavalue<int> auto const1_int = integral_constant<int, 1>{};
-    metavalue<int> auto static_int = integral_constant<int&, g>{};
-    metavalue<int> auto dynamicint = dynameta{1}; // see parameta.hpp
+ 'metastatic'
+   A type Q is metastatic if it is metavalue and:
+  * Q::value can initialize a Q::value_type NTTP non-type template parameter
 
-    static_assert( metastatic<const1_int> &&  metaconst<const1_int>
-               &&  metastatic<static_int> && !metaconst<static_int>
-               && !metastatic<dynamicint> && !metaconst<dynamicint> );
+ 'metaconst'
+   A type Q is metaconst if it is metastatic and:
+  * Q::value can copy-initialize an auto NTTP placeholder
 
-    static_assert( metatype<type_identity<int>> && !metatype<int>
-                && metatype<add_const<int>> && !metatype<const1_int> );
+ ***********************************************************************
 
-  Usage example
-  =============
-     template <typename Storage, metavalue<int> Extent>
-       struct ray {
-        [[no_unique_address]] Storage data;
-        [[no_unique_address]] Extent extent{};
-      };
+  Examples
+  ========
+  std::integral_constant<T,v>   is a metaconst and metastatic metavalue
+  or lml::static_<v>            if v is a constant expression of type T
+                                (T must be a structural type for NTTP v)
 
-  Here, Extent is a *type* but represents a value of value_type int.
-  It's used as the type of data member 'extent' for 'generic staticity';
-  this one definition can serve e.g. as an array or as a span whose size
-  is dynamic, constexpr or a static variable, without specializations.
-*/
+  std::integral_constant<T&,id> is a metastatic metavalue (not metaconst
+  or lml::static_<(id)>         if id is a non-constexpr static variable)
 
-#define SAME std::is_same_v
+  lml::dynamic_<T>{v}           is a metavalue (not metastatic or metaconst)
 
-#define REMOVE_REF_T(...) std::remove_reference_t<__VA_ARGS__>
-#if __cpp_lib_remove_cvref
-#define REMOVE_CVREF_T(...) std::remove_cvref_t<__VA_ARGS__>
+ ***********************************************************************/
+
+#if __cpp_concepts
+
+#  include <concepts>
+#  define SAME std::same_as
+#  define REMOVE_CVREF_T(...) std::remove_cvref_t<__VA_ARGS__>
+
 #else
-#define REMOVE_CVREF_T(...) std::remove_cv_t<REMOVE_REF_T(__VA_ARGS__)>
+
+#  include <type_traits>
+#  define SAME std::is_same_v
+#  define REMOVE_CVREF_T(...)\
+   std::remove_cv_t<std::remove_reference_t<__VA_ARGS__>>
+
 #endif
 
-#include <type_traits>
-
 #include "namespace.hpp" // open namespace LML_NAMESPACE_ID
+
+// as_return_t<T> : the qualified type of T as returned from a function
+//                  removes cv for scalar types, not for class types
+template <class T> using as_return_t = decltype(std::declval<T()>()());
 
 namespace impl {
 
@@ -138,14 +127,6 @@ inline constexpr bool has_call_op_const = false;
 template <typename L>
 inline constexpr bool has_call_op_const<L, ftor_ret_or_fail<L>> = true;
 #endif
-
-// as_return_t<T> : the return type of function type T()
-//                  removes cv for scalar types, not for class types
-// value_return_type<Q>: typename Q::value_type as a return type
-//
-template <class T> using as_return_t = decltype(std::declval<T()>()());
-template <class Q>
-using value_return_type = as_return_t<typename Q::value_type>;
 
 // element0(v) -> v if it's not of array type else element0(v[0])
 //                     i.e. the initial element of v, recursively
@@ -193,9 +174,11 @@ constexpr bool structural_non_value() {return false;}
 } // impl;
 
 /* ********** metavalue < metastatic < metaconst ************ */
-
-// metavalue: A concept to match the access API of integral_constant
-
+/*
+   metavalue: A concept to match the access API of integral_constant
+              BUT its value is NOT neccessarily a constant expression,
+              i.e. it may not be statically auto encoded in the type.
+*/
 // metavalue <Q, V>
 //   default V = unqualified return type of Q::operator()()const or void
 // Q:
@@ -205,32 +188,34 @@ constexpr bool structural_non_value() {return false;}
 //   and is implicitly const-convertible to value_type
 //
 #if __cpp_concepts
-template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
-concept metavalue = SAME<V, REMOVE_CVREF_T(typename Q::value_type)>
- &&
-    SAME<impl::value_return_type<Q>, impl::functor_return_or_void<Q>>
- && (SAME<typename Q::value_type,std::remove_cv_t<decltype(Q::value)>>
-  || SAME<typename Q::value_type, decltype(Q::value)>)
+
+template <typename Q, typename V = impl::functor_return_or_void<Q>>
+concept metavalue
+  = SAME<REMOVE_CVREF_T(V), REMOVE_CVREF_T(typename Q::value_type)>
+ && SAME<as_return_t<typename Q::value_type>, impl::functor_return_or_void<Q>>
+ && (SAME<const typename Q::value_type, decltype(Q::value)>
+     || SAME<typename Q::value_type, decltype(Q::value)>)
  && std::is_convertible_v<Q const, typename Q::value_type>;
 
-template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
-inline constexpr bool is_metavalue_v = metavalue<Q,V>;
+template <typename Q, typename V = impl::functor_return_or_void<Q>>
+inline constexpr
+bool is_metavalue_v = metavalue<Q,V>;
 
 #else
-template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
-inline constexpr bool is_metavalue_v = false;
+
+template <typename Q, typename V = impl::functor_return_or_void<Q>>
+inline constexpr
+bool is_metavalue_v = false;
 
 template <typename Q>
-inline constexpr bool is_metavalue_v<Q,
-    REMOVE_CVREF_T(decltype(typename Q::value_type(Q::value)))>
+inline constexpr
+bool is_metavalue_v<Q, decltype(typename Q::value_type(Q::value))>
   =
-    SAME<impl::value_return_type<Q>, impl::functor_return_or_void<Q>>
+    SAME<as_return_t<typename Q::value_type>, impl::functor_return_or_void<Q>>
  && (SAME<typename Q::value_type,std::remove_cv_t<decltype(Q::value)>>
   || SAME<typename Q::value_type, decltype(Q::value)>)
  && std::is_convertible_v<Q const, typename Q::value_type>;
+
 #endif
 
 // metastatic <Q, V = see-above*> 'static meta-value' concept
@@ -238,19 +223,19 @@ inline constexpr bool is_metavalue_v<Q,
 //   and is itself a default constructible empty type
 //
 #if __cpp_concepts
-template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
-concept metastatic = metavalue<Q,V>
+template <typename Q, typename V = impl::functor_return_or_void<Q>>
+concept
+metastatic = metavalue<Q,V>
              && std::is_empty_v<Q>
              && impl::structural_functor<Q{}>;
 
 template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
+          typename V = impl::functor_return_or_void<Q>>
 inline constexpr bool is_metastatic_v = metastatic<Q,V>;
 
 #else
 template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
+          typename V = impl::functor_return_or_void<Q>>
 inline constexpr bool is_metastatic_v = is_metavalue_v<Q,V>
                                 && std::is_empty_v<Q>
                                 && impl::is_structural_functor_v<Q>;
@@ -262,17 +247,17 @@ inline constexpr bool is_metastatic_v = is_metavalue_v<Q,V>
 //
 #if __cpp_concepts
 template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
+          typename V = impl::functor_return_or_void<Q>>
 concept metaconst = metastatic<Q,V>
               && impl::structural_value_functor<Q{}>;
 
 template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
+          typename V = impl::functor_return_or_void<Q>>
 inline constexpr bool is_metaconst_v = metaconst<Q,V>;
 
 #else
 template <typename Q,
-          typename V = REMOVE_CVREF_T(impl::functor_return_or_void<Q>)>
+          typename V = impl::functor_return_or_void<Q>>
 inline constexpr bool is_metaconst_v = is_metastatic_v<Q,V>
                               && impl::is_structural_value_functor_v<Q>;
 #endif
@@ -319,10 +304,78 @@ inline constexpr bool is_metapara_v = is_metatype_v<Q>
                                    || is_metavalue_v<Q>;
 #endif
 
-#include "namespace.hpp" // close configurable namespace
+
+/* **** concepts and utilities for NTTP 'auto_list'  ***************** */
+
+// auto_list
+//
+template <typename LV>
+inline constexpr bool is_auto_list_v = false;
+
+template <template <auto...> class L, auto...V>
+inline constexpr bool is_auto_list_v<L<V...>> = true;
+
+template <typename LV>
+concept auto_list = is_auto_list_v<LV>;
+
+// auto_list_size<T> the number of elements V in auto list T = L<V...>
+//
+template <auto_list LV> inline constexpr std::size_t auto_list_size
+ = NOT_DEFINED(auto_list_size<LV>);
+//
+template <template <auto...> class L, auto...V>
+inline constexpr auto auto_list_size<L<V...>> = sizeof...(V);
+
+template <std::size_t I,
+  decltype(auto)X0=0,decltype(auto)X1=0,decltype(auto)X2=0,decltype(auto)X3=0,
+  decltype(auto)X4=0,decltype(auto)X5=0,decltype(auto)X6=0,decltype(auto)X7=0,
+  decltype(auto)X8=0,decltype(auto)X9=0,decltype(auto)Xa=0,decltype(auto)Xb=0,
+  decltype(auto)Xc=0,decltype(auto)Xd=0,decltype(auto)Xe=0,decltype(auto)Xf=0,
+  decltype(auto)...X>
+constexpr decltype(auto) auto_pack_element()
+{
+  switch (I)
+  {
+  case 0x0: if constexpr (I==0x0) return (X0);
+  case 0x1: if constexpr (I==0x1) return (X1);
+  case 0x2: if constexpr (I==0x2) return (X2);
+  case 0x3: if constexpr (I==0x3) return (X3);
+  case 0x4: if constexpr (I==0x4) return (X4);
+  case 0x5: if constexpr (I==0x5) return (X5);
+  case 0x6: if constexpr (I==0x6) return (X6);
+  case 0x7: if constexpr (I==0x7) return (X7);
+  case 0x8: if constexpr (I==0x8) return (X8);
+  case 0x9: if constexpr (I==0x9) return (X9);
+  case 0xa: if constexpr (I==0xa) return (Xa);
+  case 0xb: if constexpr (I==0xb) return (Xb);
+  case 0xc: if constexpr (I==0xc) return (Xc);
+  case 0xd: if constexpr (I==0xd) return (Xd);
+  case 0xe: if constexpr (I==0xe) return (Xe);
+  case 0xf: if constexpr (I==0xf) return (Xf);
+  default: if constexpr (I>=0x10) return auto_pack_element<I-0x10,(X)...>();
+  }
+}
+
+namespace impl {
+//
+template <std::size_t I, template <auto...> class L, auto...V>
+  //requires (I < sizeof...(V))
+constexpr auto auto_list_element(L<V...>*)
+{
+  return auto_pack_element<I,V...>();
+  static_assert(I < sizeof...(V), "auto_list_element index out of bounds");
+}
+}// impl
+
+// auto_list_element<I,LV> type_identity of element I in auto list LV
+//
+template <std::size_t I, auto_list LV>
+constexpr auto auto_list_element
+       = impl::auto_list_element<I>(static_cast<LV*>(nullptr));
+
+#include "namespace.hpp"
 
 #undef SAME
-#undef REMOVE_REF_T
 #undef REMOVE_CVREF_T
 
 #endif
